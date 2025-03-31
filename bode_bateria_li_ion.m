@@ -1,12 +1,12 @@
 %% Circuit 
-% Re||(Ri+Cm)
-% Re = 100Ohm
-% Ri = 1kOhm
-% Cm = 1nF
+% R1+(R2||C)
+% Re = 80kOhm
+% Ri = 5kOhm
+% Cm = 10nF
 
-num = [1e-6 1];
-den = [1.1e-5 1];
-gain = 100;
+num = [1.5e-4 10.003];
+den = [5e-3 1];
+gain = 1;
 sys = tf(gain*num, den);  % Create transfer function correctly
 
 % Display the transfer function
@@ -48,3 +48,27 @@ annotation('textbox', [0.6, 0.15, 0.3, 0.2], 'String', {
     ['DC Gain: ' num2str(dc_gain)], ...
     ['Phase Margin: ' num2str(Pm) '°']}, ...
     'FitBoxToText', 'on', 'BackgroundColor', 'white');
+
+% % Create a figure for the Nichols plot
+% figure
+% nichols(sys);
+% title('Nichols Chart');
+% grid on
+% ngrid
+% 
+% % Step response for time domain characteristics
+% figure
+% step(sys);
+% title('Step Response');
+% grid on
+% 
+% % Calculate time-domain metrics
+% stepinfo_data = stepinfo(sys);
+% 
+% % Add information to step response
+% annotation('textbox', [0.15, 0.15, 0.3, 0.3], 'String', {
+%     ['Rise Time: ' num2str(stepinfo_data.RiseTime) ' s'], ...
+%     ['Settling Time: ' num2str(stepinfo_data.SettlingTime) ' s'], ...
+%     ['Overshoot: ' num2str(stepinfo_data.Overshoot) ' %'], ...
+%     ['Peak: ' num2str(stepinfo_data.Peak)]}, ...
+%     'FitBoxToText', 'on', 'BackgroundColor', 'white');

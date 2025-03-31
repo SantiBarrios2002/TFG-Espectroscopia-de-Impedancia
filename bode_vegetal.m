@@ -1,4 +1,9 @@
-% Correct format:
+%% Circuit 
+% Re||(Ri+Cm)
+% Re = 80kOhm
+% Ri = 5kOhm
+% Cm = 10nF
+
 num = [5e-5 1];
 den = [8.5e-4 1];
 gain = 80e3;
