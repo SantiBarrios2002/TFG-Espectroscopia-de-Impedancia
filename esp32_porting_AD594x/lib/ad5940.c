@@ -786,7 +786,7 @@ FreqParams_Type AD5940_GetFreqParameters(float freq)
 	uint32_t n1 = 0;	// Sample rate after ADC filters
 	uint32_t n2 = 0; // Sample rate after DFT block
 	uint32_t iCycle = 0;
-	FreqParams_Type freq_params;
+	FreqParams_Type freq_params = {0};
 	/* High power mode */
 	if(freq >= 20000)
 	{
@@ -3211,7 +3211,7 @@ AD5940Err AD5940_ADCPGACal(ADCPGACal_Type *pADCPGACal)
       hsloop_cfg.WgCfg.GainCalEn = bTRUE;
       hsloop_cfg.WgCfg.OffsetCalEn = bTRUE;
       hsloop_cfg.WgCfg.WgType = WGTYPE_MMR;
-      uint32_t HSDACCode;
+      uint32_t HSDACCode = 0x800;  /* Default DAC code is 0.8V */
       if(pADCPGACal->ADCPga == ADCPGA_4)
         HSDACCode = 0x800 + 0x300;  /* 0x300--> 0x300/0x1000*0.8*BUFFERGAIN2 = 0.3V. */
       else if(pADCPGACal->ADCPga == ADCPGA_9)
