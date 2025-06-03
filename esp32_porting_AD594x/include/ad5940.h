@@ -25,7 +25,7 @@
  * Recommend to define this in your compiler.
  * */
 //#define CHIPSEL_M355      /**< ADuCM355 */
-#define CHIPSEL_5940      /**< AD5940 or AD5941 */
+#define CHIPSEL_594X    /**< AD5940 or AD5941 */
 
 /* library version number */
 #define AD5940LIB_VER_MAJOR       0    /**< Major number */
@@ -39,13 +39,13 @@
 #define ADI_Print printf   /**< Select the method to print out debug message */
 #endif
 
-// #if defined(CHIPSEL_M355) && defined(CHIPSEL_594X)
-// #error Please select the correct chip by define CHIPSEL_M355 or CHIPSEL_594X.
-// #endif
+#if defined(CHIPSEL_M355) && defined(CHIPSEL_594X)
+#error Please select the correct chip by define CHIPSEL_M355 or CHIPSEL_594X.
+#endif
 
-// #if !defined(CHIPSEL_M355) && !defined(CHIPSEL_594X)
-// #error Please select the correct chip by define CHIPSEL_M355 or CHIPSEL_594X.
-// #endif
+#if !defined(CHIPSEL_M355) && !defined(CHIPSEL_594X)
+#error Please select the correct chip by define CHIPSEL_M355 or CHIPSEL_594X.
+#endif
 
 /** 
  * @cond

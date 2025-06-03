@@ -29,22 +29,14 @@
 // #define AD5940_GP0INT_PIN 14 // A1 in Arduino UNO terms
 
 // // this pin configuration is for devkitc-v4
-// #define GPIO_SCLK      12   // D13 in Arduino UNO terms
-// #define GPIO_MISO      13   // D12 in Arduino UNO terms
-// #define GPIO_MOSI      11   // D11 in Arduino UNO terms
-// #define GPIO_CS        10    // D10 in Arduino UNO terms, this is a dummy pin that will not be used (AD5940 library was programmed in such a way that chip selects are handled manually)
-// #define AD5940_CS_PIN  14    // this is the true CS pin, AD5940 will not work with the default CS pin.
-// #define AD5940_GP0INT_PIN 9 // D2 in Arduino UNO terms, this connects to GPIO0 of AF5940
-// #define AD5940_RST_PIN 17    // A3/D17 in Arduino UNO terms
-
-// this pin configuration is for the esp32-s3-wroom board
-#define GPIO_SCLK      12   // D13 in Arduino UNO terms
-#define GPIO_MISO      13   // D12 in Arduino UNO terms
+#define GPIO_SCLK      13   // D13 in Arduino UNO terms
+#define GPIO_MISO      12   // D12 in Arduino UNO terms
 #define GPIO_MOSI      11   // D11 in Arduino UNO terms
 #define GPIO_CS        10    // D10 in Arduino UNO terms, this is a dummy pin that will not be used (AD5940 library was programmed in such a way that chip selects are handled manually)
 #define AD5940_CS_PIN  14    // this is the true CS pin, AD5940 will not work with the default CS pin.
 #define AD5940_GP0INT_PIN 9 // D2 in Arduino UNO terms, this connects to GPIO0 of AF5940
 #define AD5940_RST_PIN 17    // A3/D17 in Arduino UNO terms
+
 
 
 spi_device_handle_t spi_handle; // globle handle to be in line with porting requirements
@@ -169,7 +161,8 @@ uint32_t AD5940_MCUResourceInit(void *pCfg)
         .command_bits = 0,
         .address_bits = 0,
         .dummy_bits = 0,
-        .clock_speed_hz = SPI_MASTER_FREQ_8M,
+        // .clock_speed_hz = SPI_MASTER_FREQ_8M,
+        .clock_speed_hz = 1000000, // 1MHz clock
         .duty_cycle_pos = 128,        // 50% duty cycle
         .mode = 0,
         .spics_io_num = GPIO_CS,
