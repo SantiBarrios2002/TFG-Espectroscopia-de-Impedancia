@@ -42,7 +42,7 @@ classdef EISAppUtils < handle
         
         function timestamp = getCurrentTimestamp()
             % Return formatted timestamp
-            timestamp = datestr(now, 'yyyy-mm-dd HH:MM:SS');
+            timestamp = string(datetime('now', 'yyyy-mm-dd HH:MM:SS'));
         end
     end
 end
