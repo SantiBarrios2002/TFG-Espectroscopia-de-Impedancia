@@ -47,7 +47,7 @@ void app_main()
 
 	// write register test
   srand(0x1234);
-  int i = 10;
+  int i = 1000;
 	while(i--)
 	{
 		static unsigned long count;
@@ -65,31 +65,11 @@ void app_main()
 		temp = AD5940_ReadReg(REG_AFE_CALDATLOCK);
 		if(temp != data)
 		    printf("Write register test failed @0x%08lx\n", data);
+		else
+		    printf("Write register test passed @0x%08lx\n", data);
 		if(!(count%1000))
 		    printf("Read/Write has been done %ld times, latest data is 0x%08lx\n", count, data);
 	}
   printf("SPI read/write test completed");
-
-	printf("Testing both ID registers:\n");
-
-	uint32_t adiid = AD5940_ReadReg(REG_AFECON_ADIID);
-	printf("ADIID:  0x%08lx (expected ~0x4144)\n", adiid);
-
-	vTaskDelay(pdMS_TO_TICKS(10)); // Small delay between reads
-
-	uint32_t chipid = AD5940_ReadReg(REG_AFECON_CHIPID);
-	printf("CHIPID: 0x%08lx (expected 0x5500/5501/5502)\n", chipid);
-
-	printf("\n=== Manual Register Test ===\n");
-
-	// Try reading register 0x0000 (should be different from 0x0404)
-	uint32_t reg0 = AD5940_ReadReg(0x0000);
-	printf("Register 0x0000: 0x%08lx\n", reg0);
-
-	uint32_t reg4 = AD5940_ReadReg(0x0004);  
-	printf("Register 0x0004: 0x%08lx\n", reg4);
-
-	uint32_t reg8 = AD5940_ReadReg(0x0008);
-	printf("Register 0x0008: 0x%08lx\n", reg8);
 }
 
