@@ -1,5 +1,6 @@
 {
     "files.associations": {
-        "task.h": "c"
+        "task.h": "c",
+        "ad5940.h": "c"
     }
 }
