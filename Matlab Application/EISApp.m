@@ -95,11 +95,9 @@ classdef EISApp < matlab.apps.AppBase
         CurrentModel            char = 'Randles'
         FittedParameters        double
         FitQuality              struct
-
-        % Zfit integration properties
-        ZfitCircuitStrings    cell = {'s(p(R1,C1),p(R1,E2))', 's(p(R1,C1),R1)', 's(R1,E2)'}
+      
+        ZfitCircuitStrings    cell = {'s(R1,p(R1,C1))', 's(p(R1,C1),R1)', 's(R1,C1)'}
         ZfitCircuitNames      cell = {'Randles Circuit', 'RC Circuit', 'Warburg Element'}
-
     end
 
     % Callbacks that handle component events
@@ -1349,40 +1347,34 @@ classdef EISApp < matlab.apps.AppBase
             selectedIndex = find(strcmp(app.ModelDropDown.Value, app.ZfitCircuitNames));
             
             switch selectedIndex
-                case 1 % Randles Circuit: s(p(R1,C1),p(R1,E2))
+                case 1 % Randles Circuit: s(R1,p(R1,C1)) - 3 parameters
                     paramData = {
                         'Rs', 'Rs', 100, 'Ω';
-                        'Cdl', 'Cdl', 1e-8, 'F';
                         'Rct', 'Rct', 1000, 'Ω';
-                        'CPE_Y0', 'Y0', 1e-6, 'S·s^n';
-                        'CPE_n', 'n', 0.8, '-'
+                        'Cdl', 'Cdl', 1e-6, 'F'
                     };
-                case 2 % RC Circuit: s(p(R1,C1),R1)
+                case 2 % RC Circuit: s(p(R1,C1),R1) - 3 parameters  
                     paramData = {
                         'R1', 'R1', 100, 'Ω';
                         'C1', 'C1', 1e-6, 'F';
                         'R2', 'R2', 1000, 'Ω'
                     };
-                case 3 % Warburg Element: s(R1,E2)
+                case 3 % Warburg Element: s(R1,C1) - 2 parameters
                     paramData = {
                         'Rs', 'Rs', 100, 'Ω';
-                        'Warburg_Y0', 'Y0', 1e-3, 'S·s^0.5';
-                        'Warburg_n', 'n', 0.5, '-'
+                        'C1', 'C1', 1e-6, 'F'
                     };
                 otherwise % Default case
                     paramData = {
                         'Rs', 'Rs', 100, 'Ω';
-                        'Cdl', 'Cdl', 1e-8, 'F';
                         'Rct', 'Rct', 1000, 'Ω';
-                        'CPE_Y0', 'Y0', 1e-6, 'S·s^n';
-                        'CPE_n', 'n', 0.8, '-'
+                        'Cdl', 'Cdl', 1e-6, 'F'
                     };
             end
             
             % Set the table data
             app.InitialGuessTable.Data = paramData;
         end
-
 
         function FitModel(app, ~)
             % Perform model fitting using Zfit
