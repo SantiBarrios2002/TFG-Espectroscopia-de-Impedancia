@@ -30,7 +30,7 @@
 
 // // this pin configuration is for devkitc-v4
 #define GPIO_SCLK      6  // D13 in Arduino UNO terms
-#define GPIO_MISO      2   // D12 in Arduino UNO terms
+#define GPIO_MISO      5   // D12 in Arduino UNO terms
 #define GPIO_MOSI      7   // D11 in Arduino UNO terms
 #define GPIO_CS        0   // Disconnected    
 #define AD5940_CS_PIN  4    // this is the true CS pin, AD5940 will not work with the default CS pin. D10 in Arduino UNO terms
