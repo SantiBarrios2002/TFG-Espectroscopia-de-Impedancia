@@ -108,6 +108,7 @@ classdef EISApp < matlab.apps.AppBase
         ExportLivePlotButton    matlab.ui.control.Button 
         ExportFittingPlotButton matlab.ui.control.Button
         ReportStatusLabel       matlab.ui.control.Label
+        CheckDataButton         matlab.ui.control.Button
     
 
     end
@@ -1856,16 +1857,56 @@ classdef EISApp < matlab.apps.AppBase
             statusPanel.Position = [30 50 900 60];
             statusPanel.Title = 'Report Status';
             statusPanel.FontWeight = 'bold';
-            
+                       
             app.ReportStatusLabel = uilabel(statusPanel);
             app.ReportStatusLabel.Position = [20 20 860 22];
-            app.ReportStatusLabel.Text = 'Ready to generate report. Ensure you have measurement data and fitting results.';
+            app.ReportStatusLabel.Text = 'Ready to generate report. Ensure you have: 1) Dataset loaded, 2) Plots generated, 3) Fitting performed.';
             app.ReportStatusLabel.FontSize = 12;
+
+            % Add this button in your createReportTab function after the Generate Report button:
+            app.CheckDataButton = uibutton(generationPanel, 'push');
+            app.CheckDataButton.Position = [400 15 100 25];
+            app.CheckDataButton.Text = 'Check Data';
+            app.CheckDataButton.ButtonPushedFcn = createCallbackFcn(app, @CheckReportData, true);
         end
+        
+        function CheckReportData(app, ~)
+                % Check data availability without generating report
+                validationResult = app.validateReportData();
+                
+                if validationResult.isValid && ~validationResult.hasWarnings
+                    EISAppUtils.showSuccessAlert(app.UIFigure, ...
+                        'All required data is available for report generation.', ...
+                        'Data Check Complete');
+                elseif validationResult.hasWarnings
+                    warningText = strjoin(validationResult.warnings, newline);
+                    EISAppUtils.showWarningAlert(app.UIFigure, ...
+                        sprintf('Report can be generated but some data is missing:%s%s', newline, warningText), ...
+                        'Data Check Warning');
+                else
+                    missingText = strjoin(validationResult.missingItems, newline);
+                    EISAppUtils.showErrorAlert(app.UIFigure, ...
+                        sprintf('Cannot generate report. Missing:%s%s', newline, missingText), ...
+                        'Data Check Failed');
+                end
+            end
 
         function GenerateReport(app, ~)
-            % Generate comprehensive EIS analysis report
+            % Generate comprehensive EIS analysis report with validation
             try
+                app.ReportStatusLabel.Text = 'Validating data for report generation...';
+                drawnow;
+                
+                % Validate data availability
+                validationResult = app.validateReportData();
+                
+                if ~validationResult.isValid
+                    % Show warning dialog with missing data details
+                    app.showReportValidationWarning(validationResult);
+                    app.ReportStatusLabel.Text = 'Report generation cancelled - missing required data.';
+                    return;
+                end
+                
                 app.ReportStatusLabel.Text = 'Generating report...';
                 drawnow;
                 
@@ -1893,6 +1934,95 @@ classdef EISApp < matlab.apps.AppBase
             end
         end
 
+        function validationResult = validateReportData(app)
+            % Validate that essential data exists for report generation
+            validationResult = struct();
+            validationResult.isValid = true;
+            validationResult.missingItems = {};
+            validationResult.warnings = {};
+            
+            % Check for dataset
+            if isempty(app.CurrentDataset)
+                validationResult.isValid = false;
+                validationResult.missingItems{end+1} = 'No dataset loaded';
+            else
+                % Check dataset completeness
+                if ~isfield(app.CurrentDataset, 'frequency') || isempty(app.CurrentDataset.frequency)
+                    validationResult.isValid = false;
+                    validationResult.missingItems{end+1} = 'Dataset missing frequency data';
+                end
+                
+                if ~isfield(app.CurrentDataset, 'impedance') || isempty(app.CurrentDataset.impedance)
+                    validationResult.isValid = false;
+                    validationResult.missingItems{end+1} = 'Dataset missing impedance data';
+                end
+            end
+            
+            % Check for measurement data (plots)
+            hasLivePlotData = ~isempty(app.FrequencyVector) && ~isempty(app.ImpedanceData);
+            if ~hasLivePlotData
+                validationResult.warnings{end+1} = 'No live measurement plots available';
+            end
+            
+            % Check for fitting results
+            if isempty(app.FittedParameters)
+                validationResult.warnings{end+1} = 'No fitting results available';
+            end
+            
+            % Check if plots have been generated
+            hasNyquistPlot = ~isempty(app.NyquistAxes.Children);
+            hasBodePlots = ~isempty(app.BodeMagAxes.Children) && ~isempty(app.BodePhaseAxes.Children);
+            hasFittingPlot = ~isempty(app.FittingAxes.Children);
+            
+            if ~hasNyquistPlot && ~hasBodePlots
+                validationResult.warnings{end+1} = 'No EIS plots have been generated';
+            end
+            
+            if ~hasFittingPlot
+                validationResult.warnings{end+1} = 'No fitting plots have been generated';
+            end
+            
+            % If only warnings exist, still allow report generation but inform user
+            if isempty(validationResult.missingItems) && ~isempty(validationResult.warnings)
+                validationResult.hasWarnings = true;
+            else
+                validationResult.hasWarnings = false;
+            end
+        end
+
+        function showReportValidationWarning(app, validationResult)
+            % Show detailed warning about missing data for report generation
+            
+            if ~isempty(validationResult.missingItems)
+                % Critical missing data - prevent report generation
+                missingText = strjoin(validationResult.missingItems, newline);
+                warningMessage = sprintf(['Cannot generate report due to missing essential data:' newline newline ...
+                                        '%s' newline newline ...
+                                        'Please:' newline ...
+                                        '• Load a dataset in the Dataset tab, or' newline ...
+                                        '• Perform a measurement in the Live Plot tab'], missingText);
+                
+                uialert(app.UIFigure, warningMessage, 'Missing Required Data', 'Icon', 'error');
+                
+            elseif validationResult.hasWarnings
+                % Only warnings - allow user to choose
+                warningText = strjoin(validationResult.warnings, newline);
+                warningMessage = sprintf(['Report can be generated but some data is missing:' newline newline ...
+                                        '%s' newline newline ...
+                                        'The report will be incomplete. Continue anyway?'], warningText);
+                
+                selection = uiconfirm(app.UIFigure, warningMessage, 'Incomplete Data Warning', ...
+                                     'Options', {'Generate Report', 'Cancel'}, ...
+                                     'DefaultOption', 'Cancel', ...
+                                     'Icon', 'warning');
+                
+                if strcmp(selection, 'Cancel')
+                    validationResult.isValid = false;
+                end
+            end
+        end
+
+        
         function reportContent = compileReportContent(app)
             % Compile comprehensive report content
             reportLines = {};
