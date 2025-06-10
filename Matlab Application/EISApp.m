@@ -2021,100 +2021,182 @@ classdef EISApp < matlab.apps.AppBase
                 end
             end
         end
-
         
         function reportContent = compileReportContent(app)
-            % Compile comprehensive report content
+            % Compile comprehensive report content with proper cell array handling
             reportLines = {};
             
-            % Header
-            reportLines{end+1} = '========================================';
-            reportLines{end+1} = '      EIS ANALYSIS REPORT';
-            reportLines{end+1} = '========================================';
-            reportLines{end+1} = sprintf('Generated: %s', string(datetime('now', 'Format', 'yyyy-MM-dd HH:mm:ss')));
-            reportLines{end+1} = sprintf('App Version: %s', app.Version);
-            reportLines{end+1} = '';
-            
-            % Connection Status
-            reportLines{end+1} = '1. CONNECTION STATUS';
-            reportLines{end+1} = '----------------------------------------';
-            if app.IsConnected
-                reportLines{end+1} = sprintf('ESP32 Status: Connected (%s)', app.ConnectionType);
-            else
-                reportLines{end+1} = 'ESP32 Status: Not Connected';
-            end
-            reportLines{end+1} = '';
-            
-            % Dataset Information
-            reportLines{end+1} = '2. DATASET INFORMATION';
-            reportLines{end+1} = '----------------------------------------';
-            if ~isempty(app.CurrentDataset)
-                reportLines{end+1} = sprintf('Sample Name: %s', app.CurrentDataset.metadata.sampleName);
-                reportLines{end+1} = sprintf('Measurement Date: %s', app.CurrentDataset.metadata.measurementDate);
-                reportLines{end+1} = sprintf('Data Points: %d', app.CurrentDataset.metadata.numPoints);
-                reportLines{end+1} = sprintf('Frequency Range: %s', app.CurrentDataset.metadata.freqRange);
-                reportLines{end+1} = sprintf('Notes: %s', app.CurrentDataset.metadata.notes);
-                if isfield(app.CurrentDataset.metadata, 'dataSource')
-                    reportLines{end+1} = sprintf('Data Source: %s', app.CurrentDataset.metadata.dataSource);
+            try
+                % Header
+                reportLines{end+1} = '========================================';
+                reportLines{end+1} = '      EIS ANALYSIS REPORT';
+                reportLines{end+1} = '========================================';
+                reportLines{end+1} = sprintf('Generated: %s', string(datetime('now', 'Format', 'yyyy-MM-dd HH:mm:ss')));
+                reportLines{end+1} = sprintf('App Version: %s', app.Version);
+                reportLines{end+1} = '';
+                
+                % Connection Status
+                reportLines{end+1} = '1. CONNECTION STATUS';
+                reportLines{end+1} = '----------------------------------------';
+                if app.IsConnected
+                    connectionType = app.safeStringConvert(app.ConnectionType);
+                    reportLines{end+1} = sprintf('ESP32 Status: Connected (%s)', connectionType);
+                else
+                    reportLines{end+1} = 'ESP32 Status: Not Connected';
                 end
-            else
-                reportLines{end+1} = 'No dataset loaded.';
-            end
-            reportLines{end+1} = '';
-            
-            % Measurement Parameters
-            if app.IsRunningMeasurement || ~isempty(app.FrequencyVector)
+                reportLines{end+1} = '';
+                
+                % Dataset Information
+                reportLines{end+1} = '2. DATASET INFORMATION';
+                reportLines{end+1} = '----------------------------------------';
+                if ~isempty(app.CurrentDataset) && isstruct(app.CurrentDataset) && isfield(app.CurrentDataset, 'metadata')
+                    % Safe extraction of metadata with cell array handling
+                    sampleName = app.safeStringConvert(app.CurrentDataset.metadata.sampleName);
+                    measurementDate = app.safeStringConvert(app.CurrentDataset.metadata.measurementDate);
+                    notes = app.safeStringConvert(app.CurrentDataset.metadata.notes);
+                    freqRange = app.safeStringConvert(app.CurrentDataset.metadata.freqRange);
+                    
+                    reportLines{end+1} = sprintf('Sample Name: %s', sampleName);
+                    reportLines{end+1} = sprintf('Measurement Date: %s', measurementDate);
+                    reportLines{end+1} = sprintf('Data Points: %d', app.CurrentDataset.metadata.numPoints);
+                    reportLines{end+1} = sprintf('Frequency Range: %s', freqRange);
+                    reportLines{end+1} = sprintf('Notes: %s', notes);
+                    
+                    if isfield(app.CurrentDataset.metadata, 'dataSource')
+                        dataSource = app.safeStringConvert(app.CurrentDataset.metadata.dataSource);
+                        reportLines{end+1} = sprintf('Data Source: %s', dataSource);
+                    end
+                else
+                    reportLines{end+1} = 'No dataset loaded.';
+                end
+                reportLines{end+1} = '';
+                
+                % Measurement Parameters
                 reportLines{end+1} = '3. MEASUREMENT PARAMETERS';
                 reportLines{end+1} = '----------------------------------------';
-                reportLines{end+1} = sprintf('Start Frequency: %.2f Hz', app.FreqStartEditField.Value);
-                reportLines{end+1} = sprintf('End Frequency: %.2f Hz', app.FreqEndEditField.Value);
-                reportLines{end+1} = sprintf('Number of Points: %d', app.NumPointsEditField.Value);
-                reportLines{end+1} = sprintf('Simulated Data: %s', string(app.UseSimulatedDataCheckBox.Value));
+                if ~isempty(app.FrequencyVector) || app.IsRunningMeasurement
+                    reportLines{end+1} = sprintf('Start Frequency: %.2f Hz', app.FreqStartEditField.Value);
+                    reportLines{end+1} = sprintf('End Frequency: %.2f Hz', app.FreqEndEditField.Value);
+                    reportLines{end+1} = sprintf('Number of Points: %d', app.NumPointsEditField.Value);
+                    reportLines{end+1} = sprintf('Simulated Data: %s', string(app.UseSimulatedDataCheckBox.Value));
+                else
+                    reportLines{end+1} = 'No measurement parameters available.';
+                end
                 reportLines{end+1} = '';
-            end
-            
-            % Fitting Results
-            reportLines{end+1} = '4. FITTING RESULTS';
-            reportLines{end+1} = '----------------------------------------';
-            if ~isempty(app.FittedParameters)
-                reportLines{end+1} = sprintf('Circuit Model: %s', app.CurrentModel);
-                reportLines{end+1} = sprintf('R-squared: %.6f', app.FitQuality.rsquared);
-                reportLines{end+1} = sprintf('RMSE: %.6e', app.FitQuality.rmse);
-                reportLines{end+1} = sprintf('Chi-squared: %.6e', app.FitQuality.chisquared);
-                reportLines{end+1} = sprintf('Exit Flag: %d', app.FitQuality.exitflag);
-                reportLines{end+1} = '';
-                reportLines{end+1} = 'Fitted Parameters:';
                 
-                paramNames = app.InitialGuessTable.Data(:,1);
-                for i = 1:length(app.FittedParameters)
-                    reportLines{end+1} = sprintf('  %s: %.6e', paramNames{i}, app.FittedParameters(i));
-                end
-            else
-                reportLines{end+1} = 'No fitting results available.';
-            end
-            reportLines{end+1} = '';
-            
-            % Dataset History
-            if ~isempty(app.DatasetHistory)
-                reportLines{end+1} = '5. DATASET HISTORY';
+                % Fitting Results
+                reportLines{end+1} = '4. FITTING RESULTS';
                 reportLines{end+1} = '----------------------------------------';
-                reportLines{end+1} = sprintf('Total Datasets: %d', length(app.DatasetHistory));
-                for i = 1:min(5, length(app.DatasetHistory))  % Show up to 5 recent datasets
-                    dataset = app.DatasetHistory{i};
-                    reportLines{end+1} = sprintf('  %d. %s (%s)', i, dataset.metadata.filename, dataset.metadata.measurementDate);
-                end
-                if length(app.DatasetHistory) > 5
-                    reportLines{end+1} = sprintf('  ... and %d more datasets', length(app.DatasetHistory) - 5);
+                if ~isempty(app.FittedParameters) && ~isempty(app.FitQuality)
+                    currentModel = app.safeStringConvert(app.CurrentModel);
+                    reportLines{end+1} = sprintf('Circuit Model: %s', currentModel);
+                    reportLines{end+1} = sprintf('R-squared: %.6f', app.FitQuality.rsquared);
+                    reportLines{end+1} = sprintf('RMSE: %.6e', app.FitQuality.rmse);
+                    reportLines{end+1} = sprintf('Chi-squared: %.6e', app.FitQuality.chisquared);
+                    reportLines{end+1} = sprintf('Exit Flag: %d', app.FitQuality.exitflag);
+                    reportLines{end+1} = '';
+                    reportLines{end+1} = 'Fitted Parameters:';
+                    
+                    % Safe parameter name extraction
+                    if ~isempty(app.InitialGuessTable.Data)
+                        paramNames = app.InitialGuessTable.Data(:,1);
+                        for i = 1:length(app.FittedParameters)
+                            paramName = app.safeStringConvert(paramNames{i});
+                            reportLines{end+1} = sprintf('  %s: %.6e', paramName, app.FittedParameters(i));
+                        end
+                    end
+                else
+                    reportLines{end+1} = 'No fitting results available.';
                 end
                 reportLines{end+1} = '';
+                
+                % Dataset History
+                if ~isempty(app.DatasetHistory)
+                    reportLines{end+1} = '5. DATASET HISTORY';
+                    reportLines{end+1} = '----------------------------------------';
+                    reportLines{end+1} = sprintf('Total Datasets: %d', length(app.DatasetHistory));
+                    for i = 1:min(5, length(app.DatasetHistory))
+                        dataset = app.DatasetHistory{i};
+                        if isstruct(dataset) && isfield(dataset, 'metadata')
+                            filename = app.safeStringConvert(dataset.metadata.filename);
+                            measurementDate = app.safeStringConvert(dataset.metadata.measurementDate);
+                            reportLines{end+1} = sprintf('  %d. %s (%s)', i, filename, measurementDate);
+                        end
+                    end
+                    if length(app.DatasetHistory) > 5
+                        reportLines{end+1} = sprintf('  ... and %d more datasets', length(app.DatasetHistory) - 5);
+                    end
+                    reportLines{end+1} = '';
+                end
+                
+                % Footer
+                reportLines{end+1} = '========================================';
+                reportLines{end+1} = 'End of Report';
+                reportLines{end+1} = '========================================';
+                
+            catch ME
+                % Fallback in case of any errors
+                reportLines = {
+                    'Error generating detailed report:';
+                    ME.message;
+                    '';
+                    'Basic Information:';
+                    sprintf('App Version: %s', app.Version);
+                    sprintf('Generated: %s', string(datetime('now')));
+                };
             end
-            
-            % Footer
-            reportLines{end+1} = '========================================';
-            reportLines{end+1} = 'End of Report';
-            reportLines{end+1} = '========================================';
             
             reportContent = reportLines;
+        end
+
+        function str = safeStringConvert(app, input)
+            % Safely convert various input types to string, handling cell arrays
+            if isempty(input)
+                str = 'N/A';
+            elseif iscell(input)
+                % Handle cell arrays
+                if isempty(input)
+                    str = 'N/A';
+                elseif length(input) == 1
+                    % Single cell - extract content
+                    cellContent = input{1};
+                    if ischar(cellContent) || isstring(cellContent)
+                        str = char(cellContent);
+                    elseif isnumeric(cellContent)
+                        str = num2str(cellContent);
+                    else
+                        str = 'N/A';
+                    end
+                else
+                    % Multiple cells - join them
+                    try
+                        str = strjoin(cellfun(@char, input, 'UniformOutput', false), ', ');
+                    catch
+                        str = sprintf('Cell array with %d elements', length(input));
+                    end
+                end
+            elseif isstring(input)
+                str = char(input);
+            elseif ischar(input)
+                str = input;
+            elseif isnumeric(input)
+                if isscalar(input)
+                    str = num2str(input);
+                else
+                    str = sprintf('Numeric array [%dx%d]', size(input,1), size(input,2));
+                end
+            elseif isdatetime(input)
+                str = char(input);
+            elseif islogical(input)
+                str = string(input);
+            else
+                str = sprintf('Unknown type: %s', class(input));
+            end
+            
+            % Ensure output is never empty
+            if isempty(str)
+                str = 'N/A';
+            end
         end
 
         function ExportReportPDF(app, ~)
