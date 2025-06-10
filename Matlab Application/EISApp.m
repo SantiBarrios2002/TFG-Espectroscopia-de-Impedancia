@@ -98,6 +98,18 @@ classdef EISApp < matlab.apps.AppBase
       
         ZfitCircuitStrings    cell = {'s(R1,p(R1,C1))', 's(p(R1,C1),R1)', 's(R1,C1)'}
         ZfitCircuitNames      cell = {'Randles Circuit', 'RC Circuit', 'Warburg Element'}
+        
+        % Report Tab components
+        ReportTab                matlab.ui.container.Tab
+        ReportTextArea          matlab.ui.control.TextArea
+        GenerateReportButton    matlab.ui.control.Button
+        ExportReportPDFButton   matlab.ui.control.Button
+        ExportReportExcelButton matlab.ui.control.Button
+        ExportLivePlotButton    matlab.ui.control.Button 
+        ExportFittingPlotButton matlab.ui.control.Button
+        ReportStatusLabel       matlab.ui.control.Label
+    
+
     end
 
     % Callbacks that handle component events
@@ -420,6 +432,12 @@ classdef EISApp < matlab.apps.AppBase
                                         'Period', 0.5, ...
                                         'TimerFcn', @(~,~) app.updateMeasurement());
             
+            % Export Plot Button for Live Plot
+            app.ExportLivePlotButton = uibutton(app.LivePlotTab, 'push');
+            app.ExportLivePlotButton.Position = [860 440 60 30];
+            app.ExportLivePlotButton.Text = 'Export Plot';
+            app.ExportLivePlotButton.ButtonPushedFcn = createCallbackFcn(app, @ExportLivePlots, true);
+
             app.updateDataSourceStatus();
         end
 
@@ -1162,7 +1180,6 @@ classdef EISApp < matlab.apps.AppBase
             end
         end
 
-        
         function DatasetTableSelection(app, event)
             % Handle table row selection
             if ~isempty(event.Indices)
@@ -1331,6 +1348,12 @@ classdef EISApp < matlab.apps.AppBase
             app.FittingStatusLabel.Text = 'Select a circuit model and load data to begin fitting';
             app.FittingStatusLabel.FontSize = 12;
             
+            % Export Plot Button for Fitting Tab
+            app.ExportFittingPlotButton = uibutton(app.FittingTab, 'push');
+            app.ExportFittingPlotButton.Position = [860 340 60 30];
+            app.ExportFittingPlotButton.Text = 'Export Plot';
+            app.ExportFittingPlotButton.ButtonPushedFcn = createCallbackFcn(app, @ExportFittingPlots, true);
+
             % Initialize with Randles circuit
             app.updateParameterTable();
         end
@@ -1741,6 +1764,306 @@ classdef EISApp < matlab.apps.AppBase
             end
         end
 
+        function ExportLivePlots(app, ~)
+            try
+                [file, path] = uiputfile({'*.png';'*.pdf'}, 'Export Live Plot As');
+                if isequal(file,0), return; end
+                f = figure('Visible','off');
+                t = tiledlayout(f,1,3,'TileSpacing','compact');
+                nexttile; copyobj(app.NyquistAxes, gca); title('Nyquist');
+                nexttile; copyobj(app.BodeMagAxes, gca); title('Bode Mag');
+                nexttile; copyobj(app.BodePhaseAxes, gca); title('Bode Phase');
+                exportgraphics(t, fullfile(path,file));
+                close(f);
+                EISAppUtils.showSuccessAlert(app.UIFigure, 'Live plots exported successfully.', 'Export Complete');
+            catch ME
+                EISAppUtils.showErrorAlert(app.UIFigure, sprintf('Failed to export plot: %s', ME.message), 'Export Error');
+            end
+        end
+
+        function ExportFittingPlots(app, ~)
+            try
+                [file, path] = uiputfile({'*.png';'*.pdf'}, 'Export Fitting Plot As');
+                if isequal(file,0), return; end
+                f = figure('Visible','off');
+                t = tiledlayout(f,1,2,'TileSpacing','compact');
+                nexttile; copyobj(app.FittingAxes, gca); title('Nyquist Fit');
+                nexttile; copyobj(app.ResidualsAxes, gca); title('Residuals');
+                exportgraphics(t, fullfile(path,file));
+                close(f);
+                EISAppUtils.showSuccessAlert(app.UIFigure, 'Fitting plots exported successfully.', 'Export Complete');
+            catch ME
+                EISAppUtils.showErrorAlert(app.UIFigure, sprintf('Failed to export plot: %s', ME.message), 'Export Error');
+            end
+        end
+
+        function createReportTab(app)
+            % Clear existing content
+            delete(app.ReportTab.Children);
+            
+            % Main title
+            titleLabel = uilabel(app.ReportTab);
+            titleLabel.Position = [30 580 400 25];
+            titleLabel.Text = '📋 EIS Analysis Report';
+            titleLabel.FontSize = 18;
+            titleLabel.FontWeight = 'bold';
+            
+            % Report Generation Panel
+            generationPanel = uipanel(app.ReportTab);
+            generationPanel.Position = [30 520 900 50];
+            generationPanel.Title = 'Report Generation';
+            generationPanel.FontWeight = 'bold';
+            
+            app.GenerateReportButton = uibutton(generationPanel, 'push');
+            app.GenerateReportButton.Position = [20 15 120 25];
+            app.GenerateReportButton.Text = 'Generate Report';
+            app.GenerateReportButton.FontWeight = 'bold';
+            app.GenerateReportButton.BackgroundColor = [0.2 0.6 0.8];
+            app.GenerateReportButton.FontColor = [1 1 1];
+            app.GenerateReportButton.ButtonPushedFcn = createCallbackFcn(app, @GenerateReport, true);
+            
+            app.ExportReportPDFButton = uibutton(generationPanel, 'push');
+            app.ExportReportPDFButton.Position = [160 15 100 25];
+            app.ExportReportPDFButton.Text = 'Export PDF';
+            app.ExportReportPDFButton.BackgroundColor = [0.8 0.2 0.2];
+            app.ExportReportPDFButton.FontColor = [1 1 1];
+            app.ExportReportPDFButton.Enable = 'off';
+            app.ExportReportPDFButton.ButtonPushedFcn = createCallbackFcn(app, @ExportReportPDF, true);
+            
+            app.ExportReportExcelButton = uibutton(generationPanel, 'push');
+            app.ExportReportExcelButton.Position = [280 15 100 25];
+            app.ExportReportExcelButton.Text = 'Export Excel';
+            app.ExportReportExcelButton.BackgroundColor = [0.2 0.7 0.2];
+            app.ExportReportExcelButton.FontColor = [1 1 1];
+            app.ExportReportExcelButton.Enable = 'off';
+            app.ExportReportExcelButton.ButtonPushedFcn = createCallbackFcn(app, @ExportReportExcel, true);
+            
+            % Report Content Area
+            contentPanel = uipanel(app.ReportTab);
+            contentPanel.Position = [30 120 900 390];
+            contentPanel.Title = 'Report Content';
+            contentPanel.FontWeight = 'bold';
+            
+            app.ReportTextArea = uitextarea(contentPanel);
+            app.ReportTextArea.Position = [20 20 860 350];
+            app.ReportTextArea.Editable = 'off';
+            app.ReportTextArea.Value = {'Click "Generate Report" to create a comprehensive EIS analysis summary.'};
+            app.ReportTextArea.FontName = 'Courier New';
+            app.ReportTextArea.FontSize = 11;
+            
+            % Status Panel
+            statusPanel = uipanel(app.ReportTab);
+            statusPanel.Position = [30 50 900 60];
+            statusPanel.Title = 'Report Status';
+            statusPanel.FontWeight = 'bold';
+            
+            app.ReportStatusLabel = uilabel(statusPanel);
+            app.ReportStatusLabel.Position = [20 20 860 22];
+            app.ReportStatusLabel.Text = 'Ready to generate report. Ensure you have measurement data and fitting results.';
+            app.ReportStatusLabel.FontSize = 12;
+        end
+
+        function GenerateReport(app, ~)
+            % Generate comprehensive EIS analysis report
+            try
+                app.ReportStatusLabel.Text = 'Generating report...';
+                drawnow;
+                
+                % Collect data from all tabs
+                reportContent = app.compileReportContent();
+                
+                % Update report text area
+                app.ReportTextArea.Value = reportContent;
+                
+                % Enable export buttons
+                app.ExportReportPDFButton.Enable = 'on';
+                app.ExportReportExcelButton.Enable = 'on';
+                
+                app.ReportStatusLabel.Text = 'Report generated successfully. Ready for export.';
+                
+                EISAppUtils.showSuccessAlert(app.UIFigure, ...
+                    'EIS analysis report generated successfully.', ...
+                    'Report Generated');
+                
+            catch ME
+                app.ReportStatusLabel.Text = 'Report generation failed.';
+                EISAppUtils.showErrorAlert(app.UIFigure, ...
+                    sprintf('Failed to generate report: %s', ME.message), ...
+                    'Report Error');
+            end
+        end
+
+        function reportContent = compileReportContent(app)
+            % Compile comprehensive report content
+            reportLines = {};
+            
+            % Header
+            reportLines{end+1} = '========================================';
+            reportLines{end+1} = '      EIS ANALYSIS REPORT';
+            reportLines{end+1} = '========================================';
+            reportLines{end+1} = sprintf('Generated: %s', string(datetime('now', 'Format', 'yyyy-MM-dd HH:mm:ss')));
+            reportLines{end+1} = sprintf('App Version: %s', app.Version);
+            reportLines{end+1} = '';
+            
+            % Connection Status
+            reportLines{end+1} = '1. CONNECTION STATUS';
+            reportLines{end+1} = '----------------------------------------';
+            if app.IsConnected
+                reportLines{end+1} = sprintf('ESP32 Status: Connected (%s)', app.ConnectionType);
+            else
+                reportLines{end+1} = 'ESP32 Status: Not Connected';
+            end
+            reportLines{end+1} = '';
+            
+            % Dataset Information
+            reportLines{end+1} = '2. DATASET INFORMATION';
+            reportLines{end+1} = '----------------------------------------';
+            if ~isempty(app.CurrentDataset)
+                reportLines{end+1} = sprintf('Sample Name: %s', app.CurrentDataset.metadata.sampleName);
+                reportLines{end+1} = sprintf('Measurement Date: %s', app.CurrentDataset.metadata.measurementDate);
+                reportLines{end+1} = sprintf('Data Points: %d', app.CurrentDataset.metadata.numPoints);
+                reportLines{end+1} = sprintf('Frequency Range: %s', app.CurrentDataset.metadata.freqRange);
+                reportLines{end+1} = sprintf('Notes: %s', app.CurrentDataset.metadata.notes);
+                if isfield(app.CurrentDataset.metadata, 'dataSource')
+                    reportLines{end+1} = sprintf('Data Source: %s', app.CurrentDataset.metadata.dataSource);
+                end
+            else
+                reportLines{end+1} = 'No dataset loaded.';
+            end
+            reportLines{end+1} = '';
+            
+            % Measurement Parameters
+            if app.IsRunningMeasurement || ~isempty(app.FrequencyVector)
+                reportLines{end+1} = '3. MEASUREMENT PARAMETERS';
+                reportLines{end+1} = '----------------------------------------';
+                reportLines{end+1} = sprintf('Start Frequency: %.2f Hz', app.FreqStartEditField.Value);
+                reportLines{end+1} = sprintf('End Frequency: %.2f Hz', app.FreqEndEditField.Value);
+                reportLines{end+1} = sprintf('Number of Points: %d', app.NumPointsEditField.Value);
+                reportLines{end+1} = sprintf('Simulated Data: %s', string(app.UseSimulatedDataCheckBox.Value));
+                reportLines{end+1} = '';
+            end
+            
+            % Fitting Results
+            reportLines{end+1} = '4. FITTING RESULTS';
+            reportLines{end+1} = '----------------------------------------';
+            if ~isempty(app.FittedParameters)
+                reportLines{end+1} = sprintf('Circuit Model: %s', app.CurrentModel);
+                reportLines{end+1} = sprintf('R-squared: %.6f', app.FitQuality.rsquared);
+                reportLines{end+1} = sprintf('RMSE: %.6e', app.FitQuality.rmse);
+                reportLines{end+1} = sprintf('Chi-squared: %.6e', app.FitQuality.chisquared);
+                reportLines{end+1} = sprintf('Exit Flag: %d', app.FitQuality.exitflag);
+                reportLines{end+1} = '';
+                reportLines{end+1} = 'Fitted Parameters:';
+                
+                paramNames = app.InitialGuessTable.Data(:,1);
+                for i = 1:length(app.FittedParameters)
+                    reportLines{end+1} = sprintf('  %s: %.6e', paramNames{i}, app.FittedParameters(i));
+                end
+            else
+                reportLines{end+1} = 'No fitting results available.';
+            end
+            reportLines{end+1} = '';
+            
+            % Dataset History
+            if ~isempty(app.DatasetHistory)
+                reportLines{end+1} = '5. DATASET HISTORY';
+                reportLines{end+1} = '----------------------------------------';
+                reportLines{end+1} = sprintf('Total Datasets: %d', length(app.DatasetHistory));
+                for i = 1:min(5, length(app.DatasetHistory))  % Show up to 5 recent datasets
+                    dataset = app.DatasetHistory{i};
+                    reportLines{end+1} = sprintf('  %d. %s (%s)', i, dataset.metadata.filename, dataset.metadata.measurementDate);
+                end
+                if length(app.DatasetHistory) > 5
+                    reportLines{end+1} = sprintf('  ... and %d more datasets', length(app.DatasetHistory) - 5);
+                end
+                reportLines{end+1} = '';
+            end
+            
+            % Footer
+            reportLines{end+1} = '========================================';
+            reportLines{end+1} = 'End of Report';
+            reportLines{end+1} = '========================================';
+            
+            reportContent = reportLines;
+        end
+
+        function ExportReportPDF(app, ~)
+            % Export report as PDF
+            [filename, pathname] = uiputfile('*.pdf', 'Export Report as PDF');
+            if isequal(filename, 0)
+                return;
+            end
+            
+            try
+                % Create a figure for PDF export
+                fig = figure('Visible', 'off', 'Position', [100, 100, 800, 1000]);
+                
+                % Create text annotation with report content
+                reportText = strjoin(app.ReportTextArea.Value, '\n');
+                annotation(fig, 'textbox', [0.05, 0.05, 0.9, 0.9], ...
+                    'String', reportText, ...
+                    'FontName', 'Courier New', ...
+                    'FontSize', 10, ...
+                    'VerticalAlignment', 'top', ...
+                    'HorizontalAlignment', 'left', ...
+                    'Interpreter', 'none');
+                
+                % Export as PDF
+                fullpath = fullfile(pathname, filename);
+                exportgraphics(fig, fullpath, 'ContentType', 'vector');
+                close(fig);
+                
+                EISAppUtils.showSuccessAlert(app.UIFigure, ...
+                    sprintf('Report exported as PDF: %s', filename), ...
+                    'PDF Export Complete');
+                
+            catch ME
+                EISAppUtils.showErrorAlert(app.UIFigure, ...
+                    sprintf('Failed to export PDF: %s', ME.message), ...
+                    'PDF Export Error');
+            end
+        end
+
+        function ExportReportExcel(app, ~)
+            % Export report as Excel file
+            [filename, pathname] = uiputfile('*.xlsx', 'Export Report as Excel');
+            if isequal(filename, 0)
+                return;
+            end
+            
+            try
+                fullpath = fullfile(pathname, filename);
+                
+                % Create report summary table
+                reportTable = table(app.ReportTextArea.Value, 'VariableNames', {'Report_Content'});
+                writetable(reportTable, fullpath, 'Sheet', 'Report');
+                
+                % Add dataset information if available
+                if ~isempty(app.CurrentDataset)
+                    dataTable = table([app.CurrentDataset.frequency(:), real(app.CurrentDataset.impedance(:)), imag(app.CurrentDataset.impedance(:))], ...
+                        'VariableNames', {'Frequency_Hz_Real_Z_Imag_Z'});
+                    writetable(dataTable, fullpath, 'Sheet', 'Data');
+                end
+                
+                % Add fitting results if available
+                if ~isempty(app.FittedParameters)
+                    paramNames = app.InitialGuessTable.Data(:,1);
+                    fittingTable = table(paramNames, app.FittedParameters, ...
+                        'VariableNames', {'Parameter', 'Value'});
+                    writetable(fittingTable, fullpath, 'Sheet', 'Fitting_Results');
+                end
+                
+                EISAppUtils.showSuccessAlert(app.UIFigure, ...
+                    sprintf('Report exported as Excel: %s', filename), ...
+                    'Excel Export Complete');
+                
+            catch ME
+                EISAppUtils.showErrorAlert(app.UIFigure, ...
+                    sprintf('Failed to export Excel: %s', ME.message), ...
+                    'Excel Export Error');
+            end
+        end
+
 
         function connectUSB(app)
             % Connect via USB Serial
@@ -1886,6 +2209,7 @@ classdef EISApp < matlab.apps.AppBase
             app.createDatasetTabContainer();
             app.createLivePlotTabContainer();
             app.createFittingTabContainer();
+            app.createReportTabContainer();
         end
 
         function createConnectionTabContainer(app)
@@ -1943,6 +2267,17 @@ classdef EISApp < matlab.apps.AppBase
             app.StatusLamp.Position = [10 10 18 18];
             app.StatusLamp.Color = [0.8 0.8 0.8];
         end
+
+        function createReportTabContainer(app)
+            % Create Report Tab
+            app.ReportTab = uitab(app.TabGroup);
+            app.ReportTab.Title = 'Report';
+            app.ReportTab.BackgroundColor = [0.94 0.94 0.94];
+            
+            % Create the detailed report interface
+            app.createReportTab();
+        end
+
 
         function finalizeUI(app)
             % Show the figure after all components are created
