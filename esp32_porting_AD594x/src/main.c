@@ -44,6 +44,10 @@ void ad5940_task(void *pvParameters)
     
     ESP_LOGI(TAG, "AD5940 initialized, starting main loop");
     
+    // Signal to MATLAB that system is ready
+    printf("SYSTEM_READY\n");
+    fflush(stdout);  // Force immediate output
+
     // Call the main AD5940 function (this will run forever)
     AD5940_Main();
     

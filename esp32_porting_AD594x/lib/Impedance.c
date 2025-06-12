@@ -44,9 +44,9 @@ AppIMPCfg_Type AppIMPCfg =
   .RcalVal = 10000.0,
 
   .DswitchSel = SWD_CE0,
-  .PswitchSel = SWP_CE0,
-  .NswitchSel = SWN_AIN1,
-  .TswitchSel = SWT_AIN1,
+  .PswitchSel = SWP_AIN1,
+  .NswitchSel = SWN_AIN3,
+  .TswitchSel = SWT_AIN2,
 
   .PwrMod = AFEPWR_HP,
 
