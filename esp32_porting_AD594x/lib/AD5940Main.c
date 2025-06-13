@@ -21,21 +21,42 @@ Analog Devices Software License Agreement.
 #define APPBUFF_SIZE 512
 uint32_t AppBuff[APPBUFF_SIZE];
 
+// Binary data structure for fast transmission
+typedef struct {
+    float freq;
+    float magnitude;
+    float phase;
+} __attribute__((packed)) measurement_data_t;
+
 int32_t ImpedanceShowResult(uint32_t *pData, uint32_t DataCount)
 {
     float freq;
     fImpPol_Type *pImp = (fImpPol_Type*)pData;
     AppIMPCtrl(IMPCTRL_GETFREQ, &freq);
 
-    printf("DEBUG:FREQ=%.6f,COUNT=%lu\n", freq, DataCount);
+    // ===== BINARY APPROACH (NEW) =====
+    // Send sync byte to indicate start of binary data
+    uint8_t sync = 0xFF;
+    fwrite(&sync, sizeof(sync), 1, stdout);
     
-    for(int i = 0; i < DataCount; i++) {
-        printf("DEBUG:INDEX=%d,MAG=%.6f,PHASE=%.6f\n", 
-               i, pImp[i].Magnitude, pImp[i].Phase*180/MATH_PI);
-    }
+    // Send binary measurement data
+    measurement_data_t data = {
+        .freq = freq,
+        .magnitude = pImp[0].Magnitude,
+        .phase = pImp[0].Phase * 180 / MATH_PI  // Convert to degrees
+    };
+    fwrite(&data, sizeof(data), 1, stdout);
+    fflush(stdout);  // Force immediate transmission
+
+    // printf("DEBUG:FREQ=%.6f,COUNT=%lu\n", freq, DataCount);
     
-    // Your normal output
-    printf("DATA:%.6f,%.6f,%.6f\n", freq, pImp[0].Magnitude, pImp[0].Phase*180/MATH_PI);
+    // for(int i = 0; i < DataCount; i++) {
+    //     printf("DEBUG:INDEX=%d,MAG=%.6f,PHASE=%.6f\n", 
+    //            i, pImp[i].Magnitude, pImp[i].Phase*180/MATH_PI);
+    // }
+    
+    // // Your normal output
+    // printf("DATA:%.6f,%.6f,%.6f\n", freq, pImp[0].Magnitude, pImp[0].Phase*180/MATH_PI);
     
     return 0;
 }
