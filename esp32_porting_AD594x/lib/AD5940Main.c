@@ -23,22 +23,21 @@ uint32_t AppBuff[APPBUFF_SIZE];
 
 int32_t ImpedanceShowResult(uint32_t *pData, uint32_t DataCount)
 {
-  float freq;
+    float freq;
+    fImpPol_Type *pImp = (fImpPol_Type*)pData;
+    AppIMPCtrl(IMPCTRL_GETFREQ, &freq);
 
-  fImpPol_Type *pImp = (fImpPol_Type*)pData;
-  AppIMPCtrl(IMPCTRL_GETFREQ, &freq);
-
-  // printf("Freq:%.2f ", freq);
-  // /*Process data*/
-  // for(int i=0;i<DataCount;i++)
-  // {
-  //   printf("RzMag: %f Ohm , RzPhase: %f \n",pImp[i].Magnitude,pImp[i].Phase*180/MATH_PI);
-  // }
-
-  // Send structured data for MATLAB
-  printf("DATA:%.6f,%.6f,%.6f\n", freq, pImp[0].Magnitude, pImp[0].Phase*180/MATH_PI);
-  
-  return 0;
+    printf("DEBUG:FREQ=%.6f,COUNT=%lu\n", freq, DataCount);
+    
+    for(int i = 0; i < DataCount; i++) {
+        printf("DEBUG:INDEX=%d,MAG=%.6f,PHASE=%.6f\n", 
+               i, pImp[i].Magnitude, pImp[i].Phase*180/MATH_PI);
+    }
+    
+    // Your normal output
+    printf("DATA:%.6f,%.6f,%.6f\n", freq, pImp[0].Magnitude, pImp[0].Phase*180/MATH_PI);
+    
+    return 0;
 }
 
 static int32_t AD5940PlatformCfg(void)
