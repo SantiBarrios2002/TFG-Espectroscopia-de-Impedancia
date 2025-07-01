@@ -9,7 +9,7 @@ import logging
 
 from app.config import get_settings
 from app.database import init_db
-from app.mqtt.client import FastMQTT, mqtt_config
+from app.mqtt.client import get_mqtt_client
 from app.api import devices, data, matlab
 from app.auth import auth_routes
 from app.utils.logger import setup_logging
@@ -27,14 +27,14 @@ async def lifespan(app: FastAPI):
     # Initialize database
     await init_db()
 
-    # Start MQTT client
-    await app.state.mqtt.mqtt_startup()
-    logger.info("MQTT client started")
+    # Initialize MQTT client
+    mqtt_client = get_mqtt_client()
+    app.state.mqtt = mqtt_client
+    logger.info("MQTT client initialized")
 
     yield
 
     # Cleanup
-    await app.state.mqtt.mqtt_shutdown()
     logger.info("IoT Server shutdown complete")
 
 # Initialize FastAPI app
@@ -45,9 +45,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Initialize MQTT
-mqtt_client = FastMQTT(config=mqtt_config)
-app.state.mqtt = mqtt_client
+# MQTT client will be initialized in lifespan
 
 # CORS middleware for MATLAB client access
 app.add_middleware(

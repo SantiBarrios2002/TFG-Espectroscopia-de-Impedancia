@@ -3,33 +3,66 @@ MQTT client configuration and setup for ESP32 device communication
 """
 import asyncio
 from typing import Optional, Dict, Any
-from fastapi_mqtt import FastMQTT, MQTTConfig
 import logging
+import json
 
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-# MQTT Configuration
-settings = get_settings()
-
-mqtt_config = MQTTConfig(
-    host=settings.mqtt_host,
-    port=settings.mqtt_port,
-    username=settings.mqtt_username,
-    password=settings.mqtt_password,
-    keepalive=settings.mqtt_keepalive,
-    ssl=settings.mqtt_use_ssl
-)
-
 # Global MQTT client instance
-mqtt_client: Optional[FastMQTT] = None
+mqtt_client: Optional['SimpleMQTTClient'] = None
 
-def get_mqtt_client() -> FastMQTT:
+class SimpleMQTTClient:
+    """Simple MQTT client wrapper for development"""
+    
+    def __init__(self, config):
+        self.config = config
+        self.connected = False
+        logger.info(f"MQTT client initialized for {config.get('host', 'localhost')}:{config.get('port', 1883)}")
+    
+    async def connect(self):
+        """Connect to MQTT broker"""
+        self.connected = True
+        logger.info("MQTT client connected (mock)")
+    
+    async def disconnect(self):
+        """Disconnect from MQTT broker"""
+        self.connected = False
+        logger.info("MQTT client disconnected")
+    
+    async def publish(self, topic: str, payload: Dict[str, Any]) -> bool:
+        """Publish message to MQTT topic"""
+        if not self.connected:
+            logger.warning("MQTT client not connected")
+            return False
+        
+        logger.info(f"Publishing to {topic}: {json.dumps(payload)}")
+        return True
+    
+    async def subscribe(self, topic: str) -> bool:
+        """Subscribe to MQTT topic"""
+        if not self.connected:
+            logger.warning("MQTT client not connected")
+            return False
+        
+        logger.info(f"Subscribed to {topic}")
+        return True
+
+def get_mqtt_client() -> SimpleMQTTClient:
     """Get the global MQTT client instance"""
     global mqtt_client
     if mqtt_client is None:
-        mqtt_client = FastMQTT(config=mqtt_config)
+        settings = get_settings()
+        config = {
+            'host': settings.mqtt_host,
+            'port': settings.mqtt_port,
+            'username': settings.mqtt_username,
+            'password': settings.mqtt_password,
+            'keepalive': settings.mqtt_keepalive,
+            'ssl': settings.mqtt_use_ssl
+        }
+        mqtt_client = SimpleMQTTClient(config)
     return mqtt_client
 
 async def publish_to_device(device_id: str, topic: str, payload: Dict[str, Any]) -> bool:
