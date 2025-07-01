@@ -26,10 +26,22 @@ pio device monitor    # Monitor serial output
 
 ### Python Backend (`Server_Backend/`)
 ```bash
-# Development server
-uvicorn main:app --reload
-python -m pytest      # Run tests
-alembic upgrade head   # Apply database migrations
+# Development server (standalone)
+cd Server_Backend
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# Docker development environment
+docker-compose up --build     # Start all services (PostgreSQL, Redis, MQTT, FastAPI)
+docker-compose down           # Stop all services
+docker-compose logs app       # View application logs
+
+# Testing and database
+python -m pytest             # Run tests with coverage
+alembic upgrade head          # Apply database migrations
+alembic revision --autogenerate -m "description"  # Create new migration
+
+# Production deployment
+docker-compose -f docker-compose.prod.yml up -d
 ```
 
 ### MATLAB Application (`Matlab_Application/`)
@@ -48,6 +60,10 @@ ESP32 + AD5940 ↔ [USB/WiFi] ↔ MATLAB App ↔ [HTTP/REST] ↔ Python Server �
 - `esp32_porting_AD594x/`: ESP32 firmware (C/C++, ESP-IDF/PlatformIO)
 - `Matlab_Application/`: Desktop GUI application (MATLAB App Designer)
 - `Server_Backend/`: FastAPI backend server (Python)
+  - `app/`: Main application code (FastAPI, models, schemas, API endpoints)
+  - `docker/`: Docker configuration files (Dockerfile, docker-compose)
+  - `tests/`: Comprehensive test suite with pytest
+  - `docs/`: API documentation and deployment guides
 
 ## Hardware Configuration
 
@@ -82,11 +98,16 @@ ESP32 + AD5940 ↔ [USB/WiFi] ↔ MATLAB App ↔ [HTTP/REST] ↔ Python Server �
 - `EISAppUtils.m`: Utility functions for data processing and analysis
 - `readAD5940Data.m`: Hardware communication interface
 
-### Python Backend
-- FastAPI application with async/await support
-- SQLAlchemy ORM for PostgreSQL database
-- JWT-based authentication system
-- MQTT support for IoT device communication
+### Python Backend (`Server_Backend/app/`)
+- `main.py`: FastAPI application with async lifespan management
+- `database.py`: Async SQLAlchemy setup with PostgreSQL
+- `config.py`: Environment-based configuration management
+- `auth/`: JWT authentication system (login, register, password management)
+- `api/`: REST API endpoints (devices, data collection, MATLAB integration)
+- `models/`: SQLAlchemy database models (Device, User, SensorData)
+- `schemas/`: Pydantic validation schemas for API requests/responses
+- `mqtt/`: MQTT client for ESP32 device communication
+- `utils/`: Logging configuration and utility functions
 
 ## Development Notes
 
@@ -103,10 +124,35 @@ ESP32 + AD5940 ↔ [USB/WiFi] ↔ MATLAB App ↔ [HTTP/REST] ↔ Python Server �
 - Dataset management and export capabilities
 
 ### Backend Server
-- Async FastAPI with automatic API documentation
-- PostgreSQL database with Alembic migrations
-- RESTful API design for MATLAB integration
-- Device management and sensor data storage
+- **FastAPI Framework**: Async/await support with automatic OpenAPI documentation
+- **Database**: PostgreSQL with async SQLAlchemy ORM and Alembic migrations
+- **Authentication**: JWT-based auth with access/refresh tokens
+- **API Design**: RESTful endpoints for device management, data collection, MATLAB integration
+- **MQTT Integration**: Real-time communication with ESP32 devices
+- **Docker Support**: Complete containerized development and production environments
+- **Testing**: Comprehensive test suite with pytest, coverage, and CI/CD ready
+- **Configuration**: Environment-based settings with validation
+
+## Development Environment
+
+### Server Backend Docker Services
+- **PostgreSQL**: Primary database (port 5432)
+- **Redis**: Session storage and caching (port 6379)
+- **MQTT Broker (Mosquitto)**: Device communication (ports 1883, 9001)
+- **FastAPI Application**: Main server (port 8000)
+- **Adminer**: Database management UI (port 8080)
+
+### Configuration Files
+- `.env.example`: Environment variables template
+- `pytest.ini`: Test configuration with coverage and async support
+- `alembic.ini`: Database migration configuration
+- `docker-compose.yml`: Development environment
+- `docker-compose.prod.yml`: Production deployment with Nginx, monitoring
+
+### API Documentation
+- **Interactive Docs**: Available at `http://localhost:8000/docs` (Swagger UI)
+- **ReDoc**: Available at `http://localhost:8000/redoc`
+- **Health Check**: `GET /health` endpoint for monitoring
 
 ## Testing and Validation
 
@@ -121,3 +167,10 @@ ESP32 + AD5940 ↔ [USB/WiFi] ↔ MATLAB App ↔ [HTTP/REST] ↔ Python Server �
 - CSV export for analysis
 - MATLAB .mat file format
 - JSON API responses for web integration
+
+### Server Testing
+- **Unit Tests**: Individual component testing
+- **Integration Tests**: API endpoint testing
+- **Database Tests**: Model and migration testing
+- **Authentication Tests**: JWT token and user management testing
+- **Coverage Reports**: HTML and XML coverage reports generated

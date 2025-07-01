@@ -2,7 +2,8 @@
 Database configuration and connection management
 Async SQLAlchemy setup for PostgreSQL
 """
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from typing import AsyncGenerator, Optional
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker, AsyncEngine
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import MetaData
 import logging
@@ -25,10 +26,10 @@ class Base(DeclarativeBase):
     )
 
 # Global engine and session maker
-engine = None
-AsyncSessionLocal = None
+engine: Optional[AsyncEngine] = None
+AsyncSessionLocal: Optional[async_sessionmaker[AsyncSession]] = None
 
-def create_engine():
+def create_engine() -> AsyncEngine:
     """Create database engine"""
     global engine, AsyncSessionLocal
 
@@ -66,10 +67,13 @@ async def init_db():
 
     logger.info("Database tables initialized")
 
-async def get_db() -> AsyncSession:
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """Dependency for getting database session"""
     if AsyncSessionLocal is None:
         create_engine()
+    
+    if AsyncSessionLocal is None:
+        raise RuntimeError("Database session factory not initialized")
 
     async with AsyncSessionLocal() as session:
         try:
