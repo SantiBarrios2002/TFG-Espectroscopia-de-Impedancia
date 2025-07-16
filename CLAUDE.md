@@ -94,6 +94,62 @@ ESP32 + AD5940/AD5941 ↔ [MQTT via Server] ↔ MATLAB Frontend App ↔ [Node-RE
 - **Example Commands**: `"SELECT_BOARD:AD5940"`, `"SELECT_BOARD:AD5941"`
 
 
+## Future Architecture: Node-RED Integration
+
+### Planned Server Architecture
+```
+MATLAB GUI ↔ [HTTP/MQTT] ↔ Node-RED ↔ MQTT Broker ↔ ESP32 (AD5940/AD5941)
+                              ↓
+                          InfluxDB (Time-series data)
+```
+
+### Dual Communication Strategy
+
+**Dataset Management (HTTP/REST):**
+- **Purpose**: Historical data queries, bulk dataset downloads
+- **Protocol**: HTTP requests to Node-RED endpoints
+- **Use Cases**: 
+  - Browse and select datasets from server
+  - Download measurement history for analysis
+  - Query data by date, device, measurement type
+- **Benefits**: Efficient for large data transfers, caching capabilities
+
+**Real-time Operations (MQTT):**
+- **Purpose**: Live measurement control and data streaming
+- **Protocol**: MQTT publish/subscribe
+- **Use Cases**:
+  - Real-time board selection (AD5940/AD5941)
+  - Live impedance data streaming during measurements
+  - Immediate parameter configuration (frequencies, RTIA values)
+- **Benefits**: Low latency, continuous streaming, multiple client support
+
+### MATLAB Frontend Features
+
+**1. Real-time Operation Mode:**
+```matlab
+% Send measurement parameters via MQTT
+publish(mqtt_client, 'esp32/cmd/config', '{"board":"AD5941","freq_start":1,"freq_end":100000}');
+
+% Subscribe to live impedance data
+subscribe(mqtt_client, 'sensors/eis/data', @onRealtimeData);
+```
+
+**2. Dataset Management Mode:**
+```matlab
+% Query available datasets via HTTP
+datasets = webread('http://node-red:1880/api/datasets', 'device_id', 'esp32_001');
+
+% Download specific dataset
+data = webread('http://node-red:1880/api/dataset/12345');
+```
+
+### Node-RED Integration Benefits
+- **Scalability**: Multiple ESP32 devices and MATLAB clients
+- **Real-time monitoring**: Live dashboards for measurement data
+- **Data persistence**: InfluxDB for time-series storage
+- **Flexibility**: Easy integration of additional data sources
+- **Protocol bridging**: Seamless conversion between HTTP, MQTT, and database protocols
+
 ## Key Source Files
 
 ### ESP32 Firmware
