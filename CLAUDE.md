@@ -67,12 +67,27 @@ ESP32 + AD5940 ↔ [USB/WiFi] ↔ MATLAB App ↔ [HTTP/REST] ↔ Python Server �
 
 ## Hardware Configuration
 
-### AD5940 Measurement Parameters
+### AD5940/AD5941 Measurement Parameters
 - Frequency Range: 0.1 Hz to 200 kHz
 - Excitation Voltage: 1-2200 mV peak-to-peak
 - DC Bias: ±1.1V range
 - TIA Resistor: 200Ω to 160kΩ selectable
 - Target Hardware: ESP32-S3 DevKit with AD5940/AD5941 evaluation boards
+
+### Dual Board Pin Configuration
+**AD5940 Board:**
+- SPI: SCLK=13, MISO=12, MOSI=14
+- Control: CS=9, INT=10, RST=11
+
+**AD5941 Board:**
+- SPI: SCLK=18, MISO=19, MOSI=23
+- Control: CS=4, INT=3, RST=15
+
+### Board Selection System
+- **Function Pointer Interface**: `board_interface_t` structure with board-specific implementations
+- **Runtime Switching**: `board_select(BOARD_AD5940)` or `board_select(BOARD_AD5941)`
+- **MATLAB Integration**: Board selection commands sent via serial/WiFi communication
+- **Hardware Isolation**: Separate pin assignments prevent SPI bus conflicts
 
 ## Communication Protocols
 
@@ -80,6 +95,8 @@ ESP32 + AD5940 ↔ [USB/WiFi] ↔ MATLAB App ↔ [HTTP/REST] ↔ Python Server �
 - Serial USB communication (115200 baud)
 - WiFi TCP/IP connection
 - JSON-based command protocol
+- **Board Selection Commands**: Runtime switching between AD5940/AD5941 boards
+- **Example Commands**: `"SELECT_BOARD:AD5940"`, `"SELECT_BOARD:AD5941"`
 
 ### MATLAB ↔ Server
 - RESTful HTTP API with JWT authentication
@@ -89,9 +106,15 @@ ESP32 + AD5940 ↔ [USB/WiFi] ↔ MATLAB App ↔ [HTTP/REST] ↔ Python Server �
 
 ### ESP32 Firmware
 - `src/main.c`: Main application entry point
+- `src/test_spi.c`: SPI testing application for board validation
 - `lib/Impedance.c`: Core impedance measurement functions
 - `lib/AD5940Main.c`: AD5940 chip initialization and control
-- `lib/ESP32Port.c`: ESP32-specific hardware abstraction layer
+- `lib/ESP32Port_AD5940.c`: Hardware abstraction layer for AD5940 board
+- `lib/ESP32Port_AD5941.c`: Hardware abstraction layer for AD5941 board
+- `lib/board_config.c`: Dual board selection and interface management
+- `lib/ad5940_wrappers.c`: Wrapper functions for AD5940 library compatibility
+- `lib/Test_SPI.c`: SPI communication testing functions
+- `include/board_config.h`: Board interface definitions and function pointers
 
 ### MATLAB Application
 - `EISApp.m`: Main application class with GUI components
@@ -113,6 +136,10 @@ ESP32 + AD5940 ↔ [USB/WiFi] ↔ MATLAB App ↔ [HTTP/REST] ↔ Python Server �
 
 ### ESP32 Firmware
 - Uses ESP-IDF framework with PlatformIO integration
+- **Dual Board Support**: Supports both AD5940 and AD5941 impedance measurement chips
+- **Runtime Board Selection**: Switch between boards without recompilation via MATLAB commands
+- **Function Pointer Interface**: Clean abstraction layer for board-specific implementations
+- **Hardware Isolation**: Separate pin configurations for each board to avoid conflicts
 - Implements CLI interface for parameter configuration
 - Supports multiple output formats (compact, verbose, CSV)
 - Real-time impedance measurements with frequency sweep capabilities

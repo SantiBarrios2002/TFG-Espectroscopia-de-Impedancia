@@ -1,5 +1,6 @@
 #include "Test_SPI.h"
 #include "ad5940.h"
+#include "board_config.h"
 #include <stdio.h>
 #include "esp_task_wdt.h"
 
@@ -22,23 +23,28 @@ void initialize_ad5940(void) {
     esp_task_wdt_deinit(); // Disable watchdog timer
     printf("Initializing MCU...\n");
 
-    if (AD5940_MCUResourceInit(NULL) != 0) {
+    if (current_board == NULL) {
+        printf("Error: No board selected. Call board_select() first.\n");
+        return;
+    }
+
+    if (current_board->MCUResourceInit(NULL) != 0) {
         printf("Error initializing MCU resources\n");
         return;
     }
     printf("MCU initialized successfully\n");
-    AD5940_Delay10us(200);
+    current_board->Delay10us(200);
 
     printf("Resetting AD5940...\n");
     AD5940_HWReset();
     printf("AD5940 reset complete\n");
-    AD5940_Delay10us(200);
+    current_board->Delay10us(200);
 
     printf("Initializing AD5940...\n");
     AD5940_Initialize();
-    AD5940_Delay10us(200);
+    current_board->Delay10us(200);
     printf("AD5940 initialized successfully\n");
-    AD5940_Delay10us(200);
+    current_board->Delay10us(200);
 }
 
 void validate_ad5940_id(void) {
@@ -50,7 +56,7 @@ void validate_ad5940_id(void) {
     } else {
         printf("ADIID register value: 0x%08lx\n", adiid);
     }
-    AD5940_Delay10us(10);
+    current_board->Delay10us(10);
 
     unsigned long chipid = AD5940_ReadReg(0x00000404);
     if (chipid == 0xFFFFFFFF || chipid == 0x00000000) {
