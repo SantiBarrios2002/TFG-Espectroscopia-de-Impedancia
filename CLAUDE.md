@@ -14,6 +14,10 @@ The MATLAB application serves as the primary frontend interface with two main se
 
 Note: A backend server for data management and cloud services will be developed separately for Raspberry Pi deployment using IoTStack containers. Additionally, wired USB connections will be maintained for debugging purposes.
 
+## Development Memories
+
+- Every time we create new files we update the CLAUDE.md file
+
 ## Build and Development Commands
 
 ### ESP32 Firmware (`esp32_porting_AD594x/`)
