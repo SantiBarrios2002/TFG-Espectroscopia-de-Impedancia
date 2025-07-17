@@ -50,6 +50,7 @@ ESP32 + AD5940/AD5941 ↔ [MQTT via Server] ↔ MATLAB Frontend App ↔ [Node-RE
 ### Key Directories
 - `esp32_porting_AD594x/`: ESP32 firmware (C/C++, ESP-IDF/PlatformIO)
 - `Matlab_Application/`: Desktop GUI application (MATLAB App Designer)
+- `server_integration/`: IoTStack server integration configurations and specifications
 
 ## Hardware Configuration
 
@@ -111,6 +112,11 @@ ESP32 + AD5940/AD5941 ↔ [MQTT via Server] ↔ MATLAB Frontend App ↔ [Node-RE
 - `EISApp.m`: Main application class with GUI components
 - `EISAppUtils.m`: Utility functions for data processing and analysis
 - `readAD5940Data.m`: Hardware communication interface
+
+### Server Integration
+- `server_integration/mqtt/topics.json`: MQTT topic structure and message format definitions
+- `server_integration/TODO.md`: Remaining integration components to implement
+- **TODO**: Message schemas, Node-RED flows, InfluxDB configuration, automation scripts
 
 
 ## Development Notes
