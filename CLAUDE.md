@@ -4,10 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a comprehensive Electrochemical Impedance Spectroscopy (EIS) system developed as a Bachelor's Final Project (TFG). The system consists of three main components:
+This is a comprehensive Electrochemical Impedance Spectroscopy (EIS) system developed as a Bachelor's Final Project (TFG). The system currently consists of two main components:
 - ESP32 firmware for controlling AD5940/AD5941 impedance measurement chips
-- MATLAB desktop application for data acquisition and analysis
-- Python FastAPI backend server for data management and cloud services
+- MATLAB desktop application acting as a frontend for data acquisition and analysis
+
+The MATLAB application serves as the primary frontend interface with two main server connections:
+1. **Real-time measurements**: MQTT connection to server for live ESP32/board data acquisition
+2. **Dataset management**: Node-RED connection to server for downloading datasets from InfluxDB databases
+
+Note: A backend server for data management and cloud services will be developed separately for Raspberry Pi deployment using IoTStack containers. Additionally, wired USB connections will be maintained for debugging purposes.
 
 ## Build and Development Commands
 
@@ -24,25 +29,6 @@ pio upload            # Upload firmware
 pio device monitor    # Monitor serial output
 ```
 
-### Python Backend (`Server_Backend/`)
-```bash
-# Development server (standalone)
-cd Server_Backend
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-# Docker development environment
-docker-compose up --build     # Start all services (PostgreSQL, Redis, MQTT, FastAPI)
-docker-compose down           # Stop all services
-docker-compose logs app       # View application logs
-
-# Testing and database
-python -m pytest             # Run tests with coverage
-alembic upgrade head          # Apply database migrations
-alembic revision --autogenerate -m "description"  # Create new migration
-
-# Production deployment
-docker-compose -f docker-compose.prod.yml up -d
-```
 
 ### MATLAB Application (`Matlab_Application/`)
 - Open `.mlapp` files in MATLAB App Designer
@@ -53,17 +39,13 @@ docker-compose -f docker-compose.prod.yml up -d
 
 ### Component Interaction
 ```
-ESP32 + AD5940 ↔ [USB/WiFi] ↔ MATLAB App ↔ [HTTP/REST] ↔ Python Server ↔ PostgreSQL
+ESP32 + AD5940/AD5941 ↔ [MQTT via Server] ↔ MATLAB Frontend App ↔ [Node-RED] ↔ InfluxDB
+                     ↔ [USB - Debug only] ↔
 ```
 
 ### Key Directories
 - `esp32_porting_AD594x/`: ESP32 firmware (C/C++, ESP-IDF/PlatformIO)
 - `Matlab_Application/`: Desktop GUI application (MATLAB App Designer)
-- `Server_Backend/`: FastAPI backend server (Python)
-  - `app/`: Main application code (FastAPI, models, schemas, API endpoints)
-  - `docker/`: Docker configuration files (Dockerfile, docker-compose)
-  - `tests/`: Comprehensive test suite with pytest
-  - `docs/`: API documentation and deployment guides
 
 ## Hardware Configuration
 
@@ -91,16 +73,21 @@ ESP32 + AD5940 ↔ [USB/WiFi] ↔ MATLAB App ↔ [HTTP/REST] ↔ Python Server �
 
 ## Communication Protocols
 
-### ESP32 ↔ MATLAB
-- Serial USB communication (115200 baud)
-- WiFi TCP/IP connection
+### Production Architecture
+**ESP32 ↔ Server ↔ MATLAB Frontend:**
+- **MQTT**: Real-time data streaming from ESP32 to server, consumed by MATLAB
+- **Node-RED**: Dataset download from InfluxDB database to MATLAB
+- **InfluxDB**: Time-series database for measurement storage
+- **JSON Protocol**: Standardized data format across all components
+
+### Development/Debug Architecture
+**ESP32 ↔ MATLAB (Direct):**
+- Serial USB communication (115200 baud) - **Debug only**
+- WiFi TCP/IP connection - **Debug only**
 - JSON-based command protocol
 - **Board Selection Commands**: Runtime switching between AD5940/AD5941 boards
 - **Example Commands**: `"SELECT_BOARD:AD5940"`, `"SELECT_BOARD:AD5941"`
 
-### MATLAB ↔ Server
-- RESTful HTTP API with JWT authentication
-- Batch data upload/download capabilities
 
 ## Key Source Files
 
@@ -121,16 +108,6 @@ ESP32 + AD5940 ↔ [USB/WiFi] ↔ MATLAB App ↔ [HTTP/REST] ↔ Python Server �
 - `EISAppUtils.m`: Utility functions for data processing and analysis
 - `readAD5940Data.m`: Hardware communication interface
 
-### Python Backend (`Server_Backend/app/`)
-- `main.py`: FastAPI application with async lifespan management
-- `database.py`: Async SQLAlchemy setup with PostgreSQL
-- `config.py`: Environment-based configuration management
-- `auth/`: JWT authentication system (login, register, password management)
-- `api/`: REST API endpoints (devices, data collection, MATLAB integration)
-- `models/`: SQLAlchemy database models (Device, User, SensorData)
-- `schemas/`: Pydantic validation schemas for API requests/responses
-- `mqtt/`: MQTT client for ESP32 device communication
-- `utils/`: Logging configuration and utility functions
 
 ## Development Notes
 
@@ -144,42 +121,20 @@ ESP32 + AD5940 ↔ [USB/WiFi] ↔ MATLAB App ↔ [HTTP/REST] ↔ Python Server �
 - Supports multiple output formats (compact, verbose, CSV)
 - Real-time impedance measurements with frequency sweep capabilities
 
-### MATLAB Application
-- Professional GUI with modular tab-based architecture
-- Integrates Zfit library for circuit model fitting
-- Real-time data visualization (Nyquist, Bode plots)
-- Dataset management and export capabilities
+### MATLAB Application (Frontend)
+- **Frontend Architecture**: Acts as primary user interface for the EIS system
+- **Real-time Data**: MQTT client for live measurement streaming from ESP32 via server
+- **Dataset Management**: Node-RED integration for downloading stored datasets from InfluxDB
+- **GUI Features**: Professional interface with modular tab-based architecture
+- **Analysis Tools**: Integrates Zfit library for circuit model fitting
+- **Visualization**: Real-time data visualization (Nyquist, Bode plots)
+- **Export Capabilities**: Multiple format support for data export
+- **Debug Mode**: Maintains direct USB/WiFi connection to ESP32 for development
 
-### Backend Server
-- **FastAPI Framework**: Async/await support with automatic OpenAPI documentation
-- **Database**: PostgreSQL with async SQLAlchemy ORM and Alembic migrations
-- **Authentication**: JWT-based auth with access/refresh tokens
-- **API Design**: RESTful endpoints for device management, data collection, MATLAB integration
-- **MQTT Integration**: Real-time communication with ESP32 devices
-- **Docker Support**: Complete containerized development and production environments
-- **Testing**: Comprehensive test suite with pytest, coverage, and CI/CD ready
-- **Configuration**: Environment-based settings with validation
 
 ## Development Environment
 
-### Server Backend Docker Services
-- **PostgreSQL**: Primary database (port 5432)
-- **Redis**: Session storage and caching (port 6379)
-- **MQTT Broker (Mosquitto)**: Device communication (ports 1883, 9001)
-- **FastAPI Application**: Main server (port 8000)
-- **Adminer**: Database management UI (port 8080)
-
-### Configuration Files
-- `.env.example`: Environment variables template
-- `pytest.ini`: Test configuration with coverage and async support
-- `alembic.ini`: Database migration configuration
-- `docker-compose.yml`: Development environment
-- `docker-compose.prod.yml`: Production deployment with Nginx, monitoring
-
-### API Documentation
-- **Interactive Docs**: Available at `http://localhost:8000/docs` (Swagger UI)
-- **ReDoc**: Available at `http://localhost:8000/redoc`
-- **Health Check**: `GET /health` endpoint for monitoring
+Current development focuses on ESP32 firmware and MATLAB application components. Server backend will be developed separately for Raspberry Pi deployment.
 
 ## Testing and Validation
 
@@ -193,11 +148,4 @@ ESP32 + AD5940 ↔ [USB/WiFi] ↔ MATLAB App ↔ [HTTP/REST] ↔ Python Server �
 - Real-time streaming data
 - CSV export for analysis
 - MATLAB .mat file format
-- JSON API responses for web integration
-
-### Server Testing
-- **Unit Tests**: Individual component testing
-- **Integration Tests**: API endpoint testing
-- **Database Tests**: Model and migration testing
-- **Authentication Tests**: JWT token and user management testing
-- **Coverage Reports**: HTML and XML coverage reports generated
+- JSON API responses for future web integration
