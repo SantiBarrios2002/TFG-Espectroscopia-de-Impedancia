@@ -1,0 +1,253 @@
+{
+  "server_connection": {
+    "description": "MATLAB server connection configuration for EIS dual board system",
+    "version": "1.0.0",
+    "last_updated": "2024-01-01"
+  },
+  
+  "mqtt_config": {
+    "broker": {
+      "host": "192.168.1.100",
+      "port": 1883,
+      "port_ssl": 8883,
+      "use_ssl": false,
+      "verify_certificate": true
+    },
+    "authentication": {
+      "username": null,
+      "password": null,
+      "client_id_prefix": "matlab_eis_client_"
+    },
+    "connection": {
+      "keepalive_interval": 60,
+      "clean_session": true,
+      "qos_level": 1,
+      "reconnect_timeout_ms": 5000,
+      "max_reconnect_attempts": 10
+    },
+    "topics": {
+      "description": "MQTT topic templates for device communication",
+      "device_base": "eis/device/{device_id}",
+      "commands": {
+        "board_select": "eis/device/{device_id}/cmd/board_select",
+        "measurement_start": "eis/device/{device_id}/cmd/measurement_start", 
+        "measurement_stop": "eis/device/{device_id}/cmd/measurement_stop"
+      },
+      "responses": {
+        "board_selection": "eis/device/{device_id}/status/board_selection",
+        "measurement_status": "eis/device/{device_id}/status/measurement"
+      },
+      "data": {
+        "ad5940_measurements": "eis/device/{device_id}/data/ad5940",
+        "ad5941_measurements": "eis/device/{device_id}/data/ad5941"
+      },
+      "system": {
+        "status": "eis/device/{device_id}/system/status",
+        "errors": "eis/device/{device_id}/system/errors", 
+        "heartbeat": "eis/device/{device_id}/system/heartbeat"
+      }
+    },
+    "subscription_settings": {
+      "auto_subscribe_on_connect": true,
+      "subscribed_topics": [
+        "eis/device/+/status/+",
+        "eis/device/+/data/+",
+        "eis/device/+/system/+"
+      ],
+      "message_buffer_size": 1000,
+      "enable_message_logging": true
+    }
+  },
+  
+  "http_config": {
+    "node_red": {
+      "base_url": "http://192.168.1.100:1880",
+      "api_endpoints": {
+        "datasets": "/api/datasets",
+        "dataset_by_id": "/api/dataset/{dataset_id}",
+        "device_datasets": "/api/datasets/device/{device_id}",
+        "measurements_by_date": "/api/measurements/date/{date}",
+        "measurements_by_timerange": "/api/measurements/timerange",
+        "system_status": "/api/system/status"
+      },
+      "request_settings": {
+        "timeout_seconds": 30,
+        "max_retries": 3,
+        "retry_delay_ms": 1000
+      },
+      "authentication": {
+        "type": "none",
+        "api_key": null,
+        "bearer_token": null
+      }
+    },
+    "influxdb_direct": {
+      "description": "Direct InfluxDB access (alternative to Node-RED)",
+      "enabled": false,
+      "base_url": "http://192.168.1.100:8086",
+      "organization": "eis_project",
+      "token": "your_influxdb_token_here",
+      "buckets": {
+        "measurements": "eis_measurements",
+        "system": "eis_system"
+      }
+    }
+  },
+  
+  "device_management": {
+    "known_devices": [
+      {
+        "device_id": "001122334455",
+        "name": "ESP32_Lab_01",
+        "location": "Laboratory Bench 1",
+        "supported_boards": ["AD5940", "AD5941"],
+        "firmware_version": "1.0.0",
+        "last_seen": null,
+        "enabled": true
+      }
+    ],
+    "discovery": {
+      "auto_discover_devices": true,
+      "discovery_timeout_ms": 30000,
+      "heartbeat_timeout_ms": 60000
+    }
+  },
+  
+  "measurement_settings": {
+    "default_board": "AD5940",
+    "measurement_types": {
+      "ad5940": {
+        "impedance_sweep": {
+          "default_freq_start": 1.0,
+          "default_freq_end": 100000.0,
+          "default_points": 101,
+          "default_log_scale": true
+        },
+        "single_frequency": {
+          "default_frequency": 1000.0
+        }
+      },
+      "ad5941": {
+        "battery_impedance": {
+          "default_freq_start": 1.0,
+          "default_freq_end": 50000.0,
+          "default_points": 50,
+          "default_log_scale": true,
+          "precharge_enabled": true
+        }
+      }
+    },
+    "data_collection": {
+      "real_time_buffer_size": 1000,
+      "auto_save_enabled": true,
+      "save_format": "mat",
+      "data_directory": "./eis_data"
+    }
+  },
+  
+  "gui_settings": {
+    "connection_panel": {
+      "show_mqtt_status": true,
+      "show_device_list": true,
+      "auto_connect_on_startup": false,
+      "connection_timeout_ms": 10000
+    },
+    "measurement_panel": {
+      "show_real_time_plot": true,
+      "plot_update_interval_ms": 100,
+      "max_plot_points": 10000,
+      "enable_nyquist_plot": true,
+      "enable_bode_plot": true
+    },
+    "data_management": {
+      "show_historical_data": true,
+      "data_refresh_interval_s": 30,
+      "max_dataset_list_size": 100
+    }
+  },
+  
+  "logging": {
+    "enable_logging": true,
+    "log_level": "info",
+    "log_file": "eis_matlab_client.log",
+    "max_log_size_mb": 10,
+    "log_retention_days": 7,
+    "log_categories": {
+      "mqtt_events": true,
+      "measurement_data": false,
+      "system_status": true,
+      "errors": true,
+      "performance": false
+    }
+  },
+  
+  "performance": {
+    "data_processing": {
+      "enable_parallel_processing": true,
+      "max_worker_threads": 4,
+      "batch_size": 100
+    },
+    "memory_management": {
+      "max_memory_usage_mb": 512,
+      "auto_cleanup_threshold": 0.8,
+      "cleanup_interval_s": 300
+    },
+    "network": {
+      "connection_pool_size": 10,
+      "request_timeout_ms": 30000,
+      "max_concurrent_requests": 5
+    }
+  },
+  
+  "security": {
+    "data_validation": {
+      "validate_json_schemas": true,
+      "max_message_size_kb": 100,
+      "sanitize_file_paths": true
+    },
+    "network_security": {
+      "allowed_hosts": [
+        "192.168.1.100",
+        "localhost",
+        "127.0.0.1"
+      ],
+      "verify_ssl_certificates": true,
+      "enable_encryption": false
+    }
+  },
+  
+  "matlab_integration": {
+    "toolbox_requirements": [
+      "Instrument Control Toolbox",
+      "Signal Processing Toolbox"
+    ],
+    "callback_functions": {
+      "on_device_connected": "onDeviceConnected",
+      "on_device_disconnected": "onDeviceDisconnected", 
+      "on_measurement_data": "onMeasurementDataReceived",
+      "on_board_selected": "onBoardSelected",
+      "on_system_error": "onSystemError"
+    },
+    "data_structures": {
+      "measurement_data_format": "struct",
+      "enable_live_variables": true,
+      "workspace_variable_prefix": "eis_"
+    }
+  },
+  
+  "example_usage": {
+    "description": "Example MATLAB code snippets for common operations",
+    "board_selection": {
+      "command": "selectBoard('001122334455', 'AD5940')",
+      "expected_response": "Board AD5940 selected successfully"
+    },
+    "start_measurement": {
+      "command": "startMeasurement('001122334455', 'impedance_sweep', struct('freq_start', 1, 'freq_end', 100000, 'num_points', 101, 'log_scale', true))",
+      "expected_response": "Measurement started with ID: meas_123456"
+    },
+    "get_historical_data": {
+      "command": "data = getHistoricalData('001122334455', '2024-01-01', '2024-01-02')",
+      "expected_response": "Returns MATLAB struct array with measurement data"
+    }
+  }
+}

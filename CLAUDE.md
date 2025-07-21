@@ -153,16 +153,18 @@ data = webread('http://node-red:1880/api/dataset/12345');
 ## Key Source Files
 
 ### ESP32 Firmware
-- `src/main.c`: Main application entry point
+- `src/main.c`: Production main application with dual board support (ready for server)
+- `test/main.c`: Complete MQTT test implementation with WiFi and JSON processing
 - `src/test_spi.c`: SPI testing application for board validation
-- `lib/Impedance.c`: Core impedance measurement functions
+- `lib/Impedance.c`: Core impedance measurement functions (AD5940)
+- `lib/BATImpedance.c`: Battery impedance measurement functions (AD5941)
 - `lib/AD5940Main.c`: AD5940 chip initialization and control
+- `lib/AD5941Main.c`: AD5941 chip initialization and control
 - `lib/ESP32Port_AD5940.c`: Hardware abstraction layer for AD5940 board
-- `lib/ESP32Port_AD5941.c`: Hardware abstraction layer for AD5941 board
+- `lib/ESP32Port_AD5941.c`: Hardware abstraction layer for AD5941 board with precharge GPIO
 - `lib/board_config.c`: Dual board selection and interface management
-- `lib/ad5940_wrappers.c`: Wrapper functions for AD5940 library compatibility
-- `lib/Test_SPI.c`: SPI communication testing functions
 - `include/board_config.h`: Board interface definitions and function pointers
+- `include/mqtt_config.h`: MQTT client configuration and topic structures
 
 ### MATLAB Application
 - `EISApp.m`: Main application class with GUI components
@@ -170,9 +172,12 @@ data = webread('http://node-red:1880/api/dataset/12345');
 - `readAD5940Data.m`: Hardware communication interface
 
 ### Server Integration
-- `server_integration/mqtt/topics.json`: MQTT topic structure and message format definitions
+- `server_integration/mqtt/message_schemas.json`: Complete JSON schemas for MQTT message validation
+- `server_integration/node-red/flows.json`: Complete Node-RED flows for MQTT processing and REST API endpoints
+- `server_integration/influxdb/schema.sql`: InfluxDB database schema and setup documentation
+- `server_integration/config/matlab_config.json`: MATLAB server integration configuration
+- `server_integration/include/mqtt_config.h`: ESP32 MQTT client configuration header
 - `server_integration/TODO.md`: Remaining integration components to implement
-- **TODO**: Message schemas, Node-RED flows, InfluxDB configuration, automation scripts
 
 
 ## Development Notes
@@ -190,11 +195,23 @@ data = webread('http://node-red:1880/api/dataset/12345');
 - Real-time impedance measurements with frequency sweep capabilities
 
 #### Key Implementation Files:
-- `src/main.c`: Production main file for server integration
+- `src/main.c`: Production main file for server integration with dual board task functions
 - `src/main_serial.c`: Debug main file with interactive serial interface
 - `lib/AD5940Main.c`: AD5940 board implementation (Impedance.c functionality)
 - `lib/AD5941Main.c`: AD5941 board implementation (BATImpedance.c functionality) 
 - `lib/BATImpedance.c`: Battery impedance measurement library (fixed compiler warnings)
+- `lib/ESP32Port_AD5940.c`: ESP32 hardware abstraction for AD5940 board
+- `lib/ESP32Port_AD5941.c`: ESP32 hardware abstraction for AD5941 board with precharge control
+
+#### Recent Implementation Updates:
+- **Arduino_WriteDn Function**: Implemented ESP32 version of ADI's precharge control function
+  - Maps ADI digital pins D3/D4 to ESP32 GPIO 17/18
+  - Enables BATImpedance.c precharge functionality for battery measurements
+  - Resolves linking errors between ADI library and ESP32 platform
+- **Dual Board Compilation**: Both AD5940 and AD5941 functionality compiles simultaneously
+  - Fixed naming conflicts (AppBuff → AppBATBuff in AD5941Main.c)
+  - Fixed compiler warnings in BATImpedance.c (indentation, format specifiers)
+- **Production-Ready Main**: Clean main.c with both board functionalities ready for server integration
 
 ### MATLAB Application (Frontend)
 - **Frontend Architecture**: Acts as primary user interface for the EIS system
@@ -212,17 +229,18 @@ data = webread('http://node-red:1880/api/dataset/12345');
 
 ### Current Development Status (Updated)
 - **ESP32 Firmware**: Dual board support implemented and functional
-  - Production firmware ready for server integration (main.c)
-  - Debug firmware ready for PlatformIO development (main_serial.c)
+  - Production firmware ready for server integration (src/main.c)
+  - MQTT test implementation complete (test/main.c) with WiFi, JSON processing, and device management
   - Text protocol restored for compatibility with both server and debug interfaces
 - **MATLAB Application**: Prepared for server-only communication
-- **Server Backend**: Will be developed separately for Raspberry Pi deployment using IoTStack
+- **Server Backend Phase 1**: Foundation components complete (MQTT schemas, Node-RED flows, InfluxDB schema, MATLAB config)
+- **Server Backend Phase 2**: Ready for Raspberry Pi deployment and end-to-end testing
 
 ### Development Workflow
-- **Production Testing**: Use main.c with server integration
-- **Debug/Development**: Use main_serial.c with PlatformIO Serial Monitor
-- **Board Testing**: Interactive commands via serial interface (SELECT_BOARD:AD5940/AD5941, START, HELP)
-- **Server Integration**: Ready to implement MQTT communication on main.c
+- **MQTT Testing**: Use test/main.c for complete MQTT integration testing with server
+- **Production Deployment**: Use src/main.c with server integration (dual board tasks ready)
+- **Server Integration**: All Phase 1 components ready for Raspberry Pi deployment
+- **Next Steps**: Deploy Node-RED flows, setup InfluxDB, test end-to-end pipeline
 
 ## Testing and Validation
 

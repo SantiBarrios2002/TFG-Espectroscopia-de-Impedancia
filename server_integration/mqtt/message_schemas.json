@@ -1,0 +1,360 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EIS MQTT Message Schemas",
+  "description": "JSON Schema definitions for MQTT messages in the EIS dual board system",
+  
+  "definitions": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    
+    "device_info": {
+      "type": "object",
+      "properties": {
+        "device_id": {
+          "type": "string",
+          "description": "Unique ESP32 device identifier"
+        },
+        "board_type": {
+          "type": "string",
+          "enum": ["AD5940", "AD5941"],
+          "description": "Currently selected measurement board"
+        },
+        "firmware_version": {
+          "type": "string",
+          "description": "ESP32 firmware version"
+        }
+      },
+      "required": ["device_id", "board_type"]
+    }
+  },
+  
+  "schemas": {
+    "board_selection": {
+      "$id": "board_selection",
+      "title": "Board Selection Command",
+      "description": "Command to select measurement board (MATLAB → ESP32)",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "const": "select_board"
+        },
+        "board_type": {
+          "type": "string",
+          "enum": ["AD5940", "AD5941"]
+        },
+        "timestamp": {
+          "$ref": "#/definitions/timestamp"
+        },
+        "request_id": {
+          "type": "string",
+          "description": "Unique request identifier for tracking"
+        }
+      },
+      "required": ["command", "board_type", "timestamp"]
+    },
+    
+    "board_selection_response": {
+      "$id": "board_selection_response", 
+      "title": "Board Selection Response",
+      "description": "Confirmation of board selection (ESP32 → Server)",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["success", "error"]
+        },
+        "selected_board": {
+          "type": "string",
+          "enum": ["AD5940", "AD5941"]
+        },
+        "message": {
+          "type": "string",
+          "description": "Success or error message"
+        },
+        "timestamp": {
+          "$ref": "#/definitions/timestamp"
+        },
+        "device_info": {
+          "$ref": "#/definitions/device_info"
+        },
+        "request_id": {
+          "type": "string",
+          "description": "Matching request identifier"
+        }
+      },
+      "required": ["status", "timestamp", "device_info"]
+    },
+    
+    "measurement_command": {
+      "$id": "measurement_command",
+      "title": "Measurement Start Command", 
+      "description": "Command to start measurements (MATLAB → ESP32)",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string", 
+          "const": "start_measurement"
+        },
+        "measurement_type": {
+          "type": "string",
+          "enum": ["impedance_sweep", "single_frequency", "battery_impedance"]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "freq_start": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 200000,
+              "description": "Start frequency in Hz"
+            },
+            "freq_end": {
+              "type": "number", 
+              "minimum": 0.1,
+              "maximum": 200000,
+              "description": "End frequency in Hz"
+            },
+            "num_points": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "description": "Number of frequency points"
+            },
+            "log_scale": {
+              "type": "boolean",
+              "description": "Use logarithmic frequency scale"
+            }
+          }
+        },
+        "timestamp": {
+          "$ref": "#/definitions/timestamp"
+        },
+        "request_id": {
+          "type": "string"
+        }
+      },
+      "required": ["command", "measurement_type", "timestamp"]
+    },
+    
+    "ad5940_measurement_data": {
+      "$id": "ad5940_measurement_data",
+      "title": "AD5940 Impedance Measurement Data",
+      "description": "Standard impedance measurement data (ESP32 → Server)",
+      "type": "object",
+      "properties": {
+        "measurement_type": {
+          "type": "string",
+          "const": "ad5940_impedance"
+        },
+        "device_info": {
+          "$ref": "#/definitions/device_info"
+        },
+        "timestamp": {
+          "$ref": "#/definitions/timestamp"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "frequency": {
+              "type": "number",
+              "description": "Measurement frequency in Hz"
+            },
+            "magnitude": {
+              "type": "number", 
+              "description": "Impedance magnitude in Ohms"
+            },
+            "phase": {
+              "type": "number",
+              "description": "Impedance phase in degrees"
+            },
+            "real": {
+              "type": "number",
+              "description": "Real component of impedance"
+            },
+            "imaginary": {
+              "type": "number",
+              "description": "Imaginary component of impedance"
+            }
+          },
+          "required": ["frequency", "magnitude", "phase"]
+        },
+        "measurement_id": {
+          "type": "string",
+          "description": "Unique measurement session identifier"
+        }
+      },
+      "required": ["measurement_type", "device_info", "timestamp", "data"]
+    },
+    
+    "ad5941_measurement_data": {
+      "$id": "ad5941_measurement_data", 
+      "title": "AD5941 Battery Impedance Measurement Data",
+      "description": "Battery impedance measurement data (ESP32 → Server)",
+      "type": "object",
+      "properties": {
+        "measurement_type": {
+          "type": "string",
+          "const": "ad5941_battery"
+        },
+        "device_info": {
+          "$ref": "#/definitions/device_info"
+        },
+        "timestamp": {
+          "$ref": "#/definitions/timestamp"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "frequency": {
+              "type": "number",
+              "description": "Measurement frequency in Hz"
+            },
+            "real": {
+              "type": "number",
+              "description": "Real component in mOhm"
+            },
+            "imaginary": {
+              "type": "number", 
+              "description": "Imaginary component in mOhm"
+            },
+            "magnitude": {
+              "type": "number",
+              "description": "Calculated magnitude in mOhm"
+            },
+            "phase": {
+              "type": "number", 
+              "description": "Calculated phase in degrees"
+            },
+            "precharge_state": {
+              "type": "string",
+              "enum": ["RCAL", "BATTERY", "AMP"],
+              "description": "Current precharge channel state"
+            }
+          },
+          "required": ["frequency", "real", "imaginary"]
+        },
+        "measurement_id": {
+          "type": "string",
+          "description": "Unique measurement session identifier"
+        }
+      },
+      "required": ["measurement_type", "device_info", "timestamp", "data"]
+    },
+    
+    "system_status": {
+      "$id": "system_status",
+      "title": "System Status Message",
+      "description": "General system status and health (ESP32 → Server)",
+      "type": "object", 
+      "properties": {
+        "message_type": {
+          "type": "string",
+          "const": "system_status"
+        },
+        "device_info": {
+          "$ref": "#/definitions/device_info"
+        },
+        "timestamp": {
+          "$ref": "#/definitions/timestamp"
+        },
+        "status": {
+          "type": "object",
+          "properties": {
+            "system_state": {
+              "type": "string",
+              "enum": ["idle", "measuring", "error", "initializing"]
+            },
+            "uptime_seconds": {
+              "type": "integer",
+              "description": "System uptime in seconds"
+            },
+            "memory_free": {
+              "type": "integer", 
+              "description": "Free memory in bytes"
+            },
+            "wifi_rssi": {
+              "type": "integer",
+              "description": "WiFi signal strength in dBm"
+            },
+            "last_error": {
+              "type": "string",
+              "description": "Last error message if any"
+            }
+          },
+          "required": ["system_state"]
+        }
+      },
+      "required": ["message_type", "device_info", "timestamp", "status"]
+    },
+    
+    "error_message": {
+      "$id": "error_message",
+      "title": "Error Message",
+      "description": "Error reporting (ESP32 → Server)",
+      "type": "object",
+      "properties": {
+        "message_type": {
+          "type": "string", 
+          "const": "error"
+        },
+        "device_info": {
+          "$ref": "#/definitions/device_info"
+        },
+        "timestamp": {
+          "$ref": "#/definitions/timestamp"
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "description": "Error code identifier"
+            },
+            "message": {
+              "type": "string",
+              "description": "Human readable error message"
+            },
+            "severity": {
+              "type": "string",
+              "enum": ["info", "warning", "error", "critical"]
+            },
+            "context": {
+              "type": "string",
+              "description": "Additional context about the error"
+            }
+          },
+          "required": ["code", "message", "severity"]
+        }
+      },
+      "required": ["message_type", "device_info", "timestamp", "error"]
+    }
+  },
+  
+  "mqtt_topics": {
+    "description": "MQTT topic structure for the EIS system",
+    "topics": {
+      "commands": {
+        "board_select": "eis/device/{device_id}/cmd/board_select",
+        "measurement_start": "eis/device/{device_id}/cmd/measurement_start",
+        "measurement_stop": "eis/device/{device_id}/cmd/measurement_stop"
+      },
+      "responses": {
+        "board_selection": "eis/device/{device_id}/status/board_selection", 
+        "measurement_status": "eis/device/{device_id}/status/measurement"
+      },
+      "data": {
+        "ad5940_measurements": "eis/device/{device_id}/data/ad5940",
+        "ad5941_measurements": "eis/device/{device_id}/data/ad5941"
+      },
+      "system": {
+        "status": "eis/device/{device_id}/system/status",
+        "errors": "eis/device/{device_id}/system/errors",
+        "heartbeat": "eis/device/{device_id}/system/heartbeat"
+      }
+    }
+  }
+}
