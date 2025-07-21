@@ -20,6 +20,7 @@ static const char *TAG = "AD5940_MAIN";
 
 // External function from AD5940Main.c
 extern void AD5940_Main(void);
+extern void AD5941_Main(void);
 
 // ESP32 specific initialization
 uint32_t MCUPlatformInit(void *pCfg)

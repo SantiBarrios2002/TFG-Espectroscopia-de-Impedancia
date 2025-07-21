@@ -21,44 +21,21 @@ Analog Devices Software License Agreement.
 #define APPBUFF_SIZE 512
 uint32_t AppBuff[APPBUFF_SIZE];
 
-// Binary data structure for fast transmission
-typedef struct {
-    float freq;
-    float magnitude;
-    float phase;
-} __attribute__((packed)) measurement_data_t;
-
+/* It's your choice here how to do with the data. Here is just an example to print them to UART */
 int32_t ImpedanceShowResult(uint32_t *pData, uint32_t DataCount)
 {
-    float freq;
-    fImpPol_Type *pImp = (fImpPol_Type*)pData;
-    AppIMPCtrl(IMPCTRL_GETFREQ, &freq);
+  float freq;
 
-    // ===== BINARY APPROACH (NEW) =====
-    // Send sync byte to indicate start of binary data
-    uint8_t sync = 0xFF;
-    fwrite(&sync, sizeof(sync), 1, stdout);
-    
-    // Send binary measurement data
-    measurement_data_t data = {
-        .freq = freq,
-        .magnitude = pImp[0].Magnitude,
-        .phase = pImp[0].Phase * 180 / MATH_PI  // Convert to degrees
-    };
-    fwrite(&data, sizeof(data), 1, stdout);
-    fflush(stdout);  // Force immediate transmission
+  fImpPol_Type *pImp = (fImpPol_Type*)pData;
+  AppIMPCtrl(IMPCTRL_GETFREQ, &freq);
 
-    // printf("DEBUG:FREQ=%.6f,COUNT=%lu\n", freq, DataCount);
-    
-    // for(int i = 0; i < DataCount; i++) {
-    //     printf("DEBUG:INDEX=%d,MAG=%.6f,PHASE=%.6f\n", 
-    //            i, pImp[i].Magnitude, pImp[i].Phase*180/MATH_PI);
-    // }
-    
-    // // Your normal output
-    // printf("DATA:%.6f,%.6f,%.6f\n", freq, pImp[0].Magnitude, pImp[0].Phase*180/MATH_PI);
-    
-    return 0;
+  printf("Freq:%.2f ", freq);
+  /*Process data*/
+  for(int i=0;i<DataCount;i++)
+  {
+    printf("RzMag: %f Ohm , RzPhase: %f \n",pImp[i].Magnitude,pImp[i].Phase*180/MATH_PI);
+  }
+  return 0;
 }
 
 static int32_t AD5940PlatformCfg(void)

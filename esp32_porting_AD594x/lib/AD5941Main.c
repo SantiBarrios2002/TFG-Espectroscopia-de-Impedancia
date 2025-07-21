@@ -107,7 +107,7 @@ void AD5940BATStructInit(void)
 	
 }
 
-void AD5940_Main(void)
+void AD5941_Main(void)
 {
   uint32_t temp;
   AD5940PlatformCfg();
