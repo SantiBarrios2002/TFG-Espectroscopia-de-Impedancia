@@ -180,27 +180,49 @@ data = webread('http://node-red:1880/api/dataset/12345');
 ### ESP32 Firmware
 - Uses ESP-IDF framework with PlatformIO integration
 - **Dual Board Support**: Supports both AD5940 and AD5941 impedance measurement chips
-- **Runtime Board Selection**: Switch between boards without recompilation via MATLAB commands
+- **Runtime Board Selection**: Switch between boards without recompilation via commands
 - **Function Pointer Interface**: Clean abstraction layer for board-specific implementations
 - **Hardware Isolation**: Separate pin configurations for each board to avoid conflicts
-- Implements CLI interface for parameter configuration
-- Supports multiple output formats (compact, verbose, CSV)
+- **Text Protocol**: Reverted from binary to text protocol for easier debugging and server integration
+- **Serial Debug Interface**: Interactive command system via PlatformIO Serial Monitor
+- **Dual Main Files**: Separate main.c (for server) and main_serial.c (for debugging)
+- **Naming Conflict Resolution**: Fixed function and variable naming conflicts between AD5940/AD5941 libraries
 - Real-time impedance measurements with frequency sweep capabilities
+
+#### Key Implementation Files:
+- `src/main.c`: Production main file for server integration
+- `src/main_serial.c`: Debug main file with interactive serial interface
+- `lib/AD5940Main.c`: AD5940 board implementation (Impedance.c functionality)
+- `lib/AD5941Main.c`: AD5941 board implementation (BATImpedance.c functionality) 
+- `lib/BATImpedance.c`: Battery impedance measurement library (fixed compiler warnings)
 
 ### MATLAB Application (Frontend)
 - **Frontend Architecture**: Acts as primary user interface for the EIS system
+- **Server-Only Communication**: MATLAB connects exclusively via server (MQTT/HTTP), no direct serial connection
 - **Real-time Data**: MQTT client for live measurement streaming from ESP32 via server
 - **Dataset Management**: Node-RED integration for downloading stored datasets from InfluxDB
 - **GUI Features**: Professional interface with modular tab-based architecture
 - **Analysis Tools**: Integrates Zfit library for circuit model fitting
 - **Visualization**: Real-time data visualization (Nyquist, Bode plots)
 - **Export Capabilities**: Multiple format support for data export
-- **Debug Mode**: Maintains direct USB/WiFi connection to ESP32 for development
+- **Clean Architecture**: Removed direct serial communication code (readAD5940Data.m deleted)
 
 
 ## Development Environment
 
-Current development focuses on ESP32 firmware and MATLAB application components. Server backend will be developed separately for Raspberry Pi deployment.
+### Current Development Status (Updated)
+- **ESP32 Firmware**: Dual board support implemented and functional
+  - Production firmware ready for server integration (main.c)
+  - Debug firmware ready for PlatformIO development (main_serial.c)
+  - Text protocol restored for compatibility with both server and debug interfaces
+- **MATLAB Application**: Prepared for server-only communication
+- **Server Backend**: Will be developed separately for Raspberry Pi deployment using IoTStack
+
+### Development Workflow
+- **Production Testing**: Use main.c with server integration
+- **Debug/Development**: Use main_serial.c with PlatformIO Serial Monitor
+- **Board Testing**: Interactive commands via serial interface (SELECT_BOARD:AD5940/AD5941, START, HELP)
+- **Server Integration**: Ready to implement MQTT communication on main.c
 
 ## Testing and Validation
 
