@@ -23,7 +23,7 @@ Analog Devices Software License Agreement.
 #include "BATImpedance.h"
 
 #define APPBUFF_SIZE 512
-uint32_t AppBuff[APPBUFF_SIZE];
+uint32_t AppBATBuff[APPBUFF_SIZE];
 
 /* It's your choice here how to do with the data. Here is just an example to print them to UART */
 int32_t BATShowResult(uint32_t *pData, uint32_t DataCount)
@@ -114,7 +114,7 @@ void AD5941_Main(void)
   
   AD5940BATStructInit(); /* Configure your parameters in this function */
   
-  AppBATInit(AppBuff, APPBUFF_SIZE);    /* Initialize BAT application. Provide a buffer, which is used to store sequencer commands */
+  AppBATInit(AppBATBuff, APPBUFF_SIZE);    /* Initialize BAT application. Provide a buffer, which is used to store sequencer commands */
   AppBATCtrl(BATCTRL_MRCAL, 0);     /* Measur RCAL each point in sweep */
 	AppBATCtrl(BATCTRL_START, 0); 
   while(1)
@@ -124,9 +124,9 @@ void AD5941_Main(void)
     {
 				AD5940_ClrMCUIntFlag(); 				/* Clear this flag */
 				temp = APPBUFF_SIZE;
-				AppBATISR(AppBuff, &temp); 			/* Deal with it and provide a buffer to store data we got */
+				AppBATISR(AppBATBuff, &temp); 			/* Deal with it and provide a buffer to store data we got */
 				AD5940_Delay10us(100000);
-				BATShowResult(AppBuff, temp);		/* Print measurement results over UART */		
+				BATShowResult(AppBATBuff, temp);		/* Print measurement results over UART */		
 				AD5940_SEQMmrTrig(SEQID_0);  		/* Trigger next measurement ussing MMR write*/      
    }
   }

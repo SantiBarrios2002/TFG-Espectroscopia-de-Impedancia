@@ -23,7 +23,7 @@ void app_main()
     printf("=== Dual Board Test Using Test_SPI Functions ===\n");
     
     // Hardcoded board selection for testing - change this line to test different boards
-    board_select(BOARD_AD5940); // Change to BOARD_AD5941 to test the other board
+    board_select(BOARD_AD5941); // Change to BOARD_AD5941 to test the other board
     
     // Test 1: Initialize selected device
     printf("\n=== Test 1: Device Initialization ===\n");
