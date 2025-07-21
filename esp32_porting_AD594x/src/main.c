@@ -159,6 +159,6 @@ void app_main(void)
     ESP_LOGI(TAG, "Production measurement task created - both AD5940 and AD5941 functionality available");
     
     // For individual board testing during development, uncomment one of these:
-    xTaskCreate(ad5940_impedance_task, "ad5940_task", 8192, NULL, 5, NULL);  // AD5940 only
-    // xTaskCreate(ad5941_battery_task, "ad5941_task", 8192, NULL, 5, NULL);    // AD5941 only
+    // xTaskCreate(ad5940_impedance_task, "ad5940_task", 8192, NULL, 5, NULL);  // AD5940 only
+    xTaskCreate(ad5941_battery_task, "ad5941_task", 8192, NULL, 5, NULL);    // AD5941 only
 }

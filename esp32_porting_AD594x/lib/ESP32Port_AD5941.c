@@ -35,6 +35,10 @@
 #define AD5940_GP0INT_PIN 3 // D2 in Arduino UNO terms, this connects to GPIO0 of AF5940
 #define AD5940_RST_PIN 15    // A3/D17 in Arduino UNO terms
 
+// AD5941 Precharge control GPIO pins (for BATImpedance functionality)
+#define PRECHARGE_GPIO_3  17  // Maps to ADI D3 pin for precharge control
+#define PRECHARGE_GPIO_4  18  // Maps to ADI D4 pin for precharge control
+
 
 
 static spi_device_handle_t spi_handle_ad5941; // AD5941 specific handle
@@ -232,6 +236,31 @@ uint32_t AD5940_MCUResourceInit_AD5941(void *pCfg)
     printf("SPI device successfully attached\n");
 
     return 0;
+}
+
+/**
+ * @brief ESP32 implementation of Arduino_WriteDn for AD5941 precharge control
+ * @param Dn: Digital pin mask (bit 3 = GPIO3, bit 4 = GPIO4)
+ * @param bHigh: Set pin high (true) or low (false)
+ */
+void Arduino_WriteDn(uint32_t Dn, BoolFlag bHigh)
+{
+  if(Dn & (1<<3)) // Control D3 equivalent (maps to ESP32 GPIO17)
+  {
+    gpio_set_direction(PRECHARGE_GPIO_3, GPIO_MODE_OUTPUT);
+    if(bHigh)
+      gpio_set_level(PRECHARGE_GPIO_3, 1);
+    else 
+      gpio_set_level(PRECHARGE_GPIO_3, 0);
+  }
+  if(Dn & (1<<4)) // Control D4 equivalent (maps to ESP32 GPIO18)
+  {
+    gpio_set_direction(PRECHARGE_GPIO_4, GPIO_MODE_OUTPUT);
+    if(bHigh)
+      gpio_set_level(PRECHARGE_GPIO_4, 1);
+    else 
+      gpio_set_level(PRECHARGE_GPIO_4, 0);
+  }
 }
 
 board_interface_t ad5941_interface = {
