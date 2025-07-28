@@ -17,6 +17,7 @@ Note: A backend server for data management and cloud services will be developed 
 ## Development Memories
 
 - Every time we create new files we update the CLAUDE.md file
+- **EISAppV2.m created**: Implemented complete path-based MATLAB interface with server integration and ESP32 status monitoring
 
 ## Build and Development Commands
 
@@ -94,9 +95,34 @@ ESP32 + AD5940/AD5941 ↔ [MQTT via Server] ↔ MATLAB Frontend App ↔ [Node-RE
 - **Example Commands**: `"SELECT_BOARD:AD5940"`, `"SELECT_BOARD:AD5941"`
 
 
-## Future Architecture: Node-RED Integration
+## System Operating Modes
 
-### Planned Server Architecture
+The EIS system supports three distinct operating modes to accommodate different measurement scenarios:
+
+### Mode 1: Real-Time Interactive Measurements
+- **Communication**: MATLAB ↔ MQTT ↔ ESP32 (bidirectional)
+- **Data Storage**: ESP32 → MQTT → Node-RED → InfluxDB (automatic)
+- **User Experience**: Live visualization with immediate parameter control
+- **Use Cases**: Interactive experimentation, parameter optimization, immediate analysis
+- **Data Persistence**: All measurements automatically stored for later analysis
+
+### Mode 2: Scheduled Autonomous Measurements
+- **Programming Phase**: MATLAB → MQTT → ESP32 (schedule configuration)
+- **Execution Phase**: ESP32 → MQTT → Node-RED → InfluxDB (autonomous)
+- **User Experience**: Program schedule, exit MATLAB, return later for results
+- **Use Cases**: Long-term studies (days/weeks), unattended monitoring, battery characterization
+- **ESP32 Features**: Internal scheduling, NVS persistence, power management
+
+### Mode 3: Historical Data Analysis
+- **Communication**: MATLAB ↔ HTTP ↔ Node-RED ↔ InfluxDB
+- **Data Source**: Previously stored measurements from Modes 1 & 2
+- **User Experience**: Browse, query, and download historical datasets
+- **Use Cases**: Offline analysis, comparative studies, report generation
+- **No ESP32 Required**: Pure server-side data access
+
+## Server Architecture
+
+### Complete System Architecture
 ```
 MATLAB GUI ↔ [HTTP/MQTT] ↔ Node-RED ↔ MQTT Broker ↔ ESP32 (AD5940/AD5941)
                               ↓
@@ -106,7 +132,7 @@ MATLAB GUI ↔ [HTTP/MQTT] ↔ Node-RED ↔ MQTT Broker ↔ ESP32 (AD5940/AD5941
 ### Dual Communication Strategy
 
 **Dataset Management (HTTP/REST):**
-- **Purpose**: Historical data queries, bulk dataset downloads
+- **Purpose**: Historical data queries, bulk dataset downloads (Mode 3)
 - **Protocol**: HTTP requests to Node-RED endpoints
 - **Use Cases**: 
   - Browse and select datasets from server
@@ -115,26 +141,109 @@ MATLAB GUI ↔ [HTTP/MQTT] ↔ Node-RED ↔ MQTT Broker ↔ ESP32 (AD5940/AD5941
 - **Benefits**: Efficient for large data transfers, caching capabilities
 
 **Real-time Operations (MQTT):**
-- **Purpose**: Live measurement control and data streaming
+- **Purpose**: Live measurement control and data streaming (Modes 1 & 2)
 - **Protocol**: MQTT publish/subscribe
 - **Use Cases**:
   - Real-time board selection (AD5940/AD5941)
   - Live impedance data streaming during measurements
+  - Schedule programming for autonomous operation
   - Immediate parameter configuration (frequencies, RTIA values)
 - **Benefits**: Low latency, continuous streaming, multiple client support
 
-### MATLAB Frontend Features
+### MATLAB Frontend Architecture: Path-Based UI Design
 
-**1. Real-time Operation Mode:**
+**Design Philosophy:**
+The MATLAB frontend has been redesigned from a tab-based to a path-based interface to eliminate user errors and create a logical workflow. The new architecture prevents dataset confusion and guides users through appropriate measurement sequences.
+
+**Path-Based Navigation Flow:**
+```
+Server Connection → Mode Selection → [Database Path OR Measurement Path] → Analysis/Fitting
+                                    ↓                    ↓
+                           Database Browser    Board Selection → Measurement Mode → [Scheduled Exit OR Real-time Measurement]
+```
+
+### EISAppV2 Implementation
+
+**New Path-Based Interface (`EISAppV2.m`):**
+- **Single Screen Navigation**: Replaces confusing tab system with guided workflow
+- **ESP32 Status Integration**: Real-time device status checking to prevent mode conflicts
+- **Server-First Architecture**: All communication via MQTT/HTTP server integration
+- **Error Prevention**: Visual indicators and disabled controls prevent invalid operations
+
+**Screen-by-Screen Workflow:**
+
+**1. Server Connection Screen:**
+- MQTT broker configuration (IP, port, credentials)  
+- Node-RED server settings (HTTP endpoint)
+- Automatic ESP32 status detection via MQTT
+- Connection validation before proceeding
+
+**2. Mode Selection Screen:**
+- **ESP32 Status Display**: Visual indicators showing current device state
+- **Database Analysis Path**: Access historical measurement data
+- **Measurement Path**: Perform new measurements (disabled if ESP32 busy)
+- **Conflict Prevention**: Real-time status updates prevent mode conflicts
+
+**3a. Database Path:**
+```
+Mode Selection → Database Browser → Analysis/Fitting (Final Endpoint)
+```
+
+**3b. Measurement Path:**
+```
+Mode Selection → Board Selection (AD5940/AD5941) → Measurement Mode → [Scheduled Config → App Exit] OR [Real-time → Analysis/Fitting]
+```
+
+**ESP32 Status Integration:**
+```matlab
+% Automatic status checking via MQTT
+function getESP32Status(app)
+    status_msg = receive(app.MQTTClient, 'esp32/status/mode', 'Timeout', 5);
+    app.ESP32Status = jsondecode(status_msg.Data);
+end
+
+% Visual status indicators
+switch app.ESP32Status.mode
+    case 'STANDBY'     % Green - Ready for commands
+    case 'SCHEDULED'   % Yellow - Running autonomous measurements  
+    case 'REALTIME'    % Red - Connected to another client
+end
+```
+
+**Scheduled Mode Implementation:**
+```matlab
+% Complete schedule programming
+schedule_config = struct();
+schedule_config.board = app.SelectedBoard;           % AD5940/AD5941
+schedule_config.measurements = 10;                   % Number of measurements
+schedule_config.interval_hours = 24;                 % Measurement interval
+schedule_config.freq_start = 0.1;                    % Frequency range
+schedule_config.freq_end = 100000;
+schedule_config.num_points = 50;                     % Points per measurement
+
+% Send to ESP32 and exit MATLAB
+publish(app.MQTTClient, 'esp32/cmd/schedule', jsonencode(schedule_config));
+```
+
+**Mode 1: Real-time Operation:**
 ```matlab
 % Send measurement parameters via MQTT
 publish(mqtt_client, 'esp32/cmd/config', '{"board":"AD5941","freq_start":1,"freq_end":100000}');
 
-% Subscribe to live impedance data
+% Subscribe to live impedance data (also stored automatically)
 subscribe(mqtt_client, 'sensors/eis/data', @onRealtimeData);
 ```
 
-**2. Dataset Management Mode:**
+**Mode 2: Schedule Programming:**
+```matlab
+% Program autonomous measurement schedule
+schedule = struct('measurements', 10, 'interval_hours', 24, 'board', 'AD5940');
+publish(mqtt_client, 'esp32/cmd/schedule', jsonencode(schedule));
+
+% Exit MATLAB - ESP32 runs independently
+```
+
+**Mode 3: Dataset Management:**
 ```matlab
 % Query available datasets via HTTP
 datasets = webread('http://node-red:1880/api/datasets', 'device_id', 'esp32_001');
@@ -143,10 +252,35 @@ datasets = webread('http://node-red:1880/api/datasets', 'device_id', 'esp32_001'
 data = webread('http://node-red:1880/api/dataset/12345');
 ```
 
+### ESP32 State Management Architecture
+
+**Operating States:**
+```c
+typedef enum {
+    MODE_STANDBY,       // Waiting for commands
+    MODE_REALTIME,      // Interactive measurements (Mode 1)
+    MODE_SCHEDULED      // Autonomous scheduled measurements (Mode 2)
+} system_mode_t;
+```
+
+**State Management Features:**
+- **NVS Persistence**: Schedules survive reboots and power cycles
+- **FreeRTOS Timers**: Precise timing for scheduled measurements
+- **Task Management**: Clean transitions between operating modes
+- **Power Efficiency**: Deep sleep support during long intervals
+- **Error Recovery**: Robust handling of network/measurement failures
+
+**Implementation Capabilities:**
+- **Mode Transitions**: Runtime switching based on MQTT commands
+- **Schedule Storage**: Complex measurement schedules in non-volatile storage
+- **Autonomous Operation**: Independent execution without MATLAB connection
+- **Status Reporting**: Battery level, measurement progress, error states
+
 ### Node-RED Integration Benefits
+- **Unified Data Storage**: All modes store data identically in InfluxDB
 - **Scalability**: Multiple ESP32 devices and MATLAB clients
 - **Real-time monitoring**: Live dashboards for measurement data
-- **Data persistence**: InfluxDB for time-series storage
+- **Data persistence**: Guaranteed storage regardless of client connections
 - **Flexibility**: Easy integration of additional data sources
 - **Protocol bridging**: Seamless conversion between HTTP, MQTT, and database protocols
 
@@ -167,9 +301,9 @@ data = webread('http://node-red:1880/api/dataset/12345');
 - `include/mqtt_config.h`: MQTT client configuration and topic structures
 
 ### MATLAB Application
-- `EISApp.m`: Main application class with GUI components
+- `EISApp.m`: Original tab-based application class with GUI components (legacy)
+- `EISAppV2.m`: **New path-based application with server integration and ESP32 status monitoring**
 - `EISAppUtils.m`: Utility functions for data processing and analysis
-- `readAD5940Data.m`: Hardware communication interface
 
 ### Server Integration
 - `server_integration/mqtt/message_schemas.json`: Complete JSON schemas for MQTT message validation
@@ -192,6 +326,9 @@ data = webread('http://node-red:1880/api/dataset/12345');
 - **Serial Debug Interface**: Interactive command system via PlatformIO Serial Monitor
 - **Dual Main Files**: Separate main.c (for server) and main_serial.c (for debugging)
 - **Naming Conflict Resolution**: Fixed function and variable naming conflicts between AD5940/AD5941 libraries
+- **Multi-Mode Operation**: Supports real-time, scheduled, and standby operating modes
+- **State Management**: FreeRTOS-based state machine with NVS persistence
+- **Autonomous Scheduling**: Independent measurement execution with configurable intervals
 - Real-time impedance measurements with frequency sweep capabilities
 
 #### Key Implementation Files:
@@ -216,13 +353,18 @@ data = webread('http://node-red:1880/api/dataset/12345');
 ### MATLAB Application (Frontend)
 - **Frontend Architecture**: Acts as primary user interface for the EIS system
 - **Server-Only Communication**: MATLAB connects exclusively via server (MQTT/HTTP), no direct serial connection
+- **Path-Based Interface Design**: New EISAppV2.m with guided workflow replacing confusing tab system
+- **ESP32 Status Integration**: Real-time device status monitoring to prevent mode conflicts
+- **Multi-Mode Interface**: Supports all three operating modes (real-time, scheduled, historical)
+- **Error Prevention**: Visual indicators and disabled controls prevent invalid operations
+- **Single Screen Navigation**: Clean screen-by-screen workflow with Back/Next/Cancel controls
 - **Real-time Data**: MQTT client for live measurement streaming from ESP32 via server
+- **Schedule Programming**: Complete interface for configuring autonomous measurement schedules
 - **Dataset Management**: Node-RED integration for downloading stored datasets from InfluxDB
-- **GUI Features**: Professional interface with modular tab-based architecture
-- **Analysis Tools**: Integrates Zfit library for circuit model fitting
+- **Analysis Tools**: Integrates Zfit library for circuit model fitting (endpoint for all paths)
 - **Visualization**: Real-time data visualization (Nyquist, Bode plots)
 - **Export Capabilities**: Multiple format support for data export
-- **Clean Architecture**: Removed direct serial communication code (readAD5940Data.m deleted)
+- **Dual Architecture**: Legacy EISApp.m (tab-based) and new EISAppV2.m (path-based)
 
 
 ## Development Environment
@@ -232,15 +374,23 @@ data = webread('http://node-red:1880/api/dataset/12345');
   - Production firmware ready for server integration (src/main.c)
   - MQTT test implementation complete (test/main.c) with WiFi, JSON processing, and device management
   - Text protocol restored for compatibility with both server and debug interfaces
-- **MATLAB Application**: Prepared for server-only communication
+  - **Multi-mode architecture designed**: State management framework ready for implementation
+- **MATLAB Application**: Path-based interface implemented and functional
+  - **EISAppV2.m completed**: Path-based workflow with server integration and ESP32 status monitoring
+  - **Error Prevention**: Visual status indicators and conflict prevention implemented
+  - **Server Integration**: MQTT client and HTTP communication ready for deployment
+  - **Legacy Support**: Original EISApp.m maintained for reference
 - **Server Backend Phase 1**: Foundation components complete (MQTT schemas, Node-RED flows, InfluxDB schema, MATLAB config)
 - **Server Backend Phase 2**: Ready for Raspberry Pi deployment and end-to-end testing
 
 ### Development Workflow
 - **MQTT Testing**: Use test/main.c for complete MQTT integration testing with server
 - **Production Deployment**: Use src/main.c with server integration (dual board tasks ready)
+- **Multi-Mode Implementation**: Add state management and scheduling to ESP32 firmware
+- **MATLAB Frontend**: EISAppV2.m path-based interface ready for server deployment
+- **Testing Workflow**: Use EISAppV2.m for complete path-based user experience testing
 - **Server Integration**: All Phase 1 components ready for Raspberry Pi deployment
-- **Next Steps**: Deploy Node-RED flows, setup InfluxDB, test end-to-end pipeline
+- **Next Steps**: Deploy Node-RED flows, setup InfluxDB, test end-to-end multi-mode pipeline with EISAppV2
 
 ## Testing and Validation
 
