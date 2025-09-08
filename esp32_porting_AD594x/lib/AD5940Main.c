@@ -29,11 +29,15 @@ int32_t ImpedanceShowResult(uint32_t *pData, uint32_t DataCount)
   fImpPol_Type *pImp = (fImpPol_Type*)pData;
   AppIMPCtrl(IMPCTRL_GETFREQ, &freq);
 
-  printf("Freq:%.2f ", freq);
+  printf("Freq: %.2f ", freq);
   /*Process data*/
   for(int i=0;i<DataCount;i++)
   {
     printf("RzMag: %f Ohm , RzPhase: %f \n",pImp[i].Magnitude,pImp[i].Phase*180/MATH_PI);
+    
+    // Publish impedance data via MQTT
+    extern void publish_impedance_data(double frequency, double magnitude, double phase);
+    publish_impedance_data((double)freq, (double)pImp[i].Magnitude, (double)(pImp[i].Phase*180/MATH_PI));
   }
   return 0;
 }
