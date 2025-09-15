@@ -64,6 +64,8 @@ void ad5940_impedance_task(void *pvParameters)
     ESP_LOGI(TAG, "AD5940_SYSTEM_READY");
 
     // Call AD5940 main function (Impedance.c functionality)
+    // For adjusting the measurement parameters, please refer to the AD5940_Main function in AD5940Main.c
+    // void AD5940ImpedanceStructInit(void); is the function to modify parameters
     AD5940_Main();
     fflush(stdout);
     
@@ -93,6 +95,8 @@ void ad5941_battery_task(void *pvParameters)
     ESP_LOGI(TAG, "AD5941_SYSTEM_READY");
 
     // Call AD5941 main function (BATImpedance.c functionality)
+    // For adjusting the measurement parameters, please refer to the AD5941_Main function in AD5941Main.c
+    // void AD5940BATStructInit(void); is the function to modify parameters
     AD5941_Main();
     fflush(stdout);
     
