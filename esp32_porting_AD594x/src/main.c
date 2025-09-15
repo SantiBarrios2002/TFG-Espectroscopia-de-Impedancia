@@ -129,16 +129,9 @@ void app_main(void)
     // ESP_LOGI(TAG, "AD5941: Battery impedance measurement ready");
     ESP_LOGI(TAG, "========================================");
     
-    int board_choice = 1; // Default to AD5940 board
-    ESP_LOGI(TAG, "Board choice: %d", board_choice);
+    // Create tasks for each board functionality
+    // Uncomment the task you want to run. Only one should be active at a time.
+    xTaskCreate(ad5940_impedance_task, "ad5940_task", 8192, NULL, 5, NULL);
+    // xTaskCreate(ad5941_battery_task, "ad5941_task", 8192, NULL, 5, NULL);
 
-    if (board_choice == 1) {
-        xTaskCreate(ad5940_impedance_task, "ad5940_task", 8192, NULL, 5, NULL);
-    } else if (board_choice == 2) {
-        xTaskCreate(ad5941_battery_task, "ad5941_task", 8192, NULL, 5, NULL);
-    } else {
-        ESP_LOGE(TAG, "Invalid board choice");
-        ESP_LOGE(TAG, "Invalid choice. Please restart and select 1 or 2.");
-        vTaskDelete(NULL);
-    }
 }

@@ -4,7 +4,6 @@ classdef EISApp < matlab.apps.AppBase
     properties (Access = public)
         UIFigure          matlab.ui.Figure
         TabGroup          matlab.ui.container.TabGroup
-        ConnectionTab     matlab.ui.container.Tab
         DatasetTab        matlab.ui.container.Tab
         LivePlotTab       matlab.ui.container.Tab
         FittingTab        matlab.ui.container.Tab
@@ -21,46 +20,32 @@ classdef EISApp < matlab.apps.AppBase
     end
 
     properties (Access = private)
-        % Connection properties
+        % Connection properties (Serial only)
         SerialConnection
-        WiFiConnection
-        ConnectionType = "None"
         IsConnected = false
-        
-        % Connection UI components
-        ConnectionModeDropDown    matlab.ui.control.DropDown
-        USBPortDropDown          matlab.ui.control.DropDown
-        WiFiIPEditField          matlab.ui.control.EditField
+
+        % Serial connection UI components
+        SerialPortDropDown       matlab.ui.control.DropDown
         ConnectButton            matlab.ui.control.Button
         DisconnectButton         matlab.ui.control.Button
-        RefreshPortsButton       matlab.ui.control.Button
-        ConnectionStatusLabel    matlab.ui.control.Label
-        ConnectionIndicatorLamp  matlab.ui.control.Lamp    
+        RefreshPortsButton       matlab.ui.control.Button    
 
-        % Live Plot UI components
-        StartMeasurementButton    matlab.ui.control.Button
-        StopMeasurementButton     matlab.ui.control.Button
-        ClearPlotsButton         matlab.ui.control.Button
-        FreqStartEditField       matlab.ui.control.NumericEditField
-        FreqEndEditField         matlab.ui.control.NumericEditField
-        NumPointsEditField       matlab.ui.control.NumericEditField
+        % Live Plot UI components (plot-only mode)
         
         % Plot components
         NyquistAxes              matlab.ui.control.UIAxes
         BodeMagAxes              matlab.ui.control.UIAxes
         BodePhaseAxes            matlab.ui.control.UIAxes
-        
+
         % Data and measurement
         MeasurementTimer         timer
         CurrentFrequencyIndex    double = 1
         FrequencyVector          double
         ImpedanceData           double
         IsRunningMeasurement    logical = false
-        LivePlotStatusLabel     matlab.ui.control.Label
+        LivePlotStatusList      matlab.ui.control.ListBox
 
-        % Data source control
-        UseSimulatedDataCheckBox matlab.ui.control.CheckBox
-        DataSourceStatusLabel matlab.ui.control.Label
+        % Data source control (removed - ESP32 handles configuration)
 
         % Plot handles for updating
         NyquistPlotHandle
@@ -87,6 +72,7 @@ classdef EISApp < matlab.apps.AppBase
         FittingResultsTable     matlab.ui.control.Table
         FittingAxes             matlab.ui.control.UIAxes
         ResidualsAxes           matlab.ui.control.UIAxes
+        CircuitAxes             matlab.ui.control.UIAxes
         FittingStatusLabel      matlab.ui.control.Label
         ExportFitButton         matlab.ui.control.Button
         
@@ -135,539 +121,382 @@ classdef EISApp < matlab.apps.AppBase
             app.StatusLabel.Text = sprintf("Active: %s", selectedTab.Title);
         end
 
-        function ConnectionModeChanged(app, ~)
-            % Toggle visibility of connection panels
-            panels = app.ConnectionTab.UserData;
-            
-            if strcmp(app.ConnectionModeDropDown.Value, 'USB Serial')
-                panels.USBPanel.Visible = 'on';
-                panels.WiFiPanel.Visible = 'off';
-                app.ConnectionType = "USB";
-            else
-                panels.USBPanel.Visible = 'off';
-                panels.WiFiPanel.Visible = 'on';
-                app.ConnectionType = "WiFi";
-            end
-            
-            % Reset connection status
-            app.updateConnectionStatus(false, 'Connection mode changed');
-        end
-        
-        function RefreshUSBPorts(app, ~)
-            % Scan for available serial ports
-            try
-                ports = serialportlist("available");
-                if isempty(ports)
-                    app.USBPortDropDown.Items = {'No ports found'};
-                    app.USBPortDropDown.Enable = 'off';
-                else
-                    app.USBPortDropDown.Items = ports;
-                    app.USBPortDropDown.Enable = 'on';
-                    if isscalar(ports)
-                        app.USBPortDropDown.Value = ports(1);
-                    end
-                end
-                app.ConnectionStatusLabel.Text = sprintf('Found %d available ports', length(ports));
-            catch ME
-                EISAppUtils.showErrorAlert(app.UIFigure, ...
-                    sprintf('Error scanning ports: %s', ME.message), ...
-                    'Port Scan Error');
-                app.USBPortDropDown.Items = {'Error scanning'};
-                app.USBPortDropDown.Enable = 'off';
-            end
-        end
-        
-        function ConnectToESP32(app, ~)
-            % Attempt connection based on selected mode
-            try
-                if strcmp(app.ConnectionType, "USB")
-                    app.connectUSB();
-                elseif strcmp(app.ConnectionType, "WiFi")
-                    app.connectWiFi();
-                else
-                    error('No connection mode selected');
-                end
-            catch ME
-                EISAppUtils.showErrorAlert(app.UIFigure, ...
-                    sprintf('Connection failed: %s', ME.message), ...
-                    'Connection Error');
-                app.updateConnectionStatus(false, sprintf('Connection failed: %s', ME.message));
-            end
-        end
-        
-        function DisconnectFromESP32(app, ~)
-            % Disconnect from ESP32
-            try
-                if app.IsConnected
-                    if strcmp(app.ConnectionType, "USB") && ~isempty(app.SerialConnection)
-                        delete(app.SerialConnection);
-                        app.SerialConnection = [];
-                    elseif strcmp(app.ConnectionType, "WiFi") && ~isempty(app.WiFiConnection)
-                        delete(app.WiFiConnection);
-                        app.WiFiConnection = [];
-                    end
-                end
-                
-                app.updateConnectionStatus(false, 'Disconnected successfully');
-                EISAppUtils.showSuccessAlert(app.UIFigure, 'Disconnected from ESP32', 'Disconnected');
-                
-            catch ME
-                EISAppUtils.showErrorAlert(app.UIFigure, ...
-                    sprintf('Disconnect error: %s', ME.message), ...
-                    'Disconnect Error');
-            end
-        end
     
-        function createConnectionTab(app)
-            % Clear existing content
-            delete(app.ConnectionTab.Children);
-            
-            % Main title
-            titleLabel = uilabel(app.ConnectionTab);
-            titleLabel.Position = [30 550 400 30];
-            titleLabel.Text = '🌐 ESP32 Connection Interface';
-            titleLabel.FontSize = 18;
-            titleLabel.FontWeight = 'bold';
-            
-            % Connection mode selection
-            modeLabel = uilabel(app.ConnectionTab);
-            modeLabel.Position = [30 500 150 22];
-            modeLabel.Text = 'Connection Mode:';
-            modeLabel.FontWeight = 'bold';
-            
-            app.ConnectionModeDropDown = uidropdown(app.ConnectionTab);
-            app.ConnectionModeDropDown.Position = [180 500 150 22];
-            app.ConnectionModeDropDown.Items = {'USB Serial', 'Wi-Fi'};
-            app.ConnectionModeDropDown.Value = 'USB Serial';
-            app.ConnectionModeDropDown.ValueChangedFcn = createCallbackFcn(app, @ConnectionModeChanged, true);
-            
-            % USB Serial Panel
-            usbPanel = uipanel(app.ConnectionTab);
-            usbPanel.Position = [30 350 400 120];
-            usbPanel.Title = 'USB Serial Configuration';
-            usbPanel.FontWeight = 'bold';
-            
-            portLabel = uilabel(usbPanel);
-            portLabel.Position = [20 70 80 22];
-            portLabel.Text = 'COM Port:';
-            
-            app.USBPortDropDown = uidropdown(usbPanel);
-            app.USBPortDropDown.Position = [100 70 150 22];
-            app.USBPortDropDown.Items = {'Scanning...'};
-            
-            app.RefreshPortsButton = uibutton(usbPanel, 'push');
-            app.RefreshPortsButton.Position = [270 70 80 22];
-            app.RefreshPortsButton.Text = 'Refresh';
-            app.RefreshPortsButton.ButtonPushedFcn = createCallbackFcn(app, @RefreshUSBPorts, true);
-            
-            baudLabel = uilabel(usbPanel);
-            baudLabel.Position = [20 40 80 22];
-            baudLabel.Text = 'Baud Rate:';
-            
-            baudValue = uilabel(usbPanel);
-            baudValue.Position = [100 40 100 22];
-            baudValue.Text = '115200';
-            baudValue.FontWeight = 'bold';
-            
-            % Wi-Fi Panel
-            wifiPanel = uipanel(app.ConnectionTab);
-            wifiPanel.Position = [450 350 400 120];
-            wifiPanel.Title = 'Wi-Fi Configuration';
-            wifiPanel.FontWeight = 'bold';
-            wifiPanel.Visible = 'off';
-            
-            ipLabel = uilabel(wifiPanel);
-            ipLabel.Position = [20 70 80 22];
-            ipLabel.Text = 'IP Address:';
-            
-            app.WiFiIPEditField = uieditfield(wifiPanel, 'text');
-            app.WiFiIPEditField.Position = [100 70 150 22];
-            app.WiFiIPEditField.Value = '192.168.1.100';
-            app.WiFiIPEditField.Placeholder = 'e.g., 192.168.1.100';
-            
-            portLabel2 = uilabel(wifiPanel);
-            portLabel2.Position = [20 40 80 22];
-            portLabel2.Text = 'Port:';
-            
-            portValue = uilabel(wifiPanel);
-            portValue.Position = [100 40 100 22];
-            portValue.Text = '8080';
-            portValue.FontWeight = 'bold';
-            
-            % Connection buttons
-            app.ConnectButton = uibutton(app.ConnectionTab, 'push');
-            app.ConnectButton.Position = [30 280 100 30];
-            app.ConnectButton.Text = 'Connect';
-            app.ConnectButton.FontSize = 14;
-            app.ConnectButton.FontWeight = 'bold';
-            app.ConnectButton.BackgroundColor = [0.2 0.7 0.2];
-            app.ConnectButton.FontColor = [1 1 1];
-            app.ConnectButton.ButtonPushedFcn = createCallbackFcn(app, @ConnectToESP32, true);
-            
-            app.DisconnectButton = uibutton(app.ConnectionTab, 'push');
-            app.DisconnectButton.Position = [150 280 100 30];
-            app.DisconnectButton.Text = 'Disconnect';
-            app.DisconnectButton.FontSize = 14;
-            app.DisconnectButton.BackgroundColor = [0.8 0.2 0.2];
-            app.DisconnectButton.FontColor = [1 1 1];
-            app.DisconnectButton.Enable = 'off';
-            app.DisconnectButton.ButtonPushedFcn = createCallbackFcn(app, @DisconnectFromESP32, true);
-            
-            % Connection status
-            statusPanel = uipanel(app.ConnectionTab);
-            statusPanel.Position = [30 180 820 80];
-            statusPanel.Title = 'Connection Status';
-            statusPanel.FontWeight = 'bold';
-            
-            app.ConnectionIndicatorLamp = uilamp(statusPanel);
-            app.ConnectionIndicatorLamp.Position = [20 30 20 20];
-            app.ConnectionIndicatorLamp.Color = [0.8 0.8 0.8];
-            
-            app.ConnectionStatusLabel = uilabel(statusPanel);
-            app.ConnectionStatusLabel.Position = [60 25 700 30];
-            app.ConnectionStatusLabel.Text = 'Not Connected - Select connection mode and click Connect';
-            app.ConnectionStatusLabel.FontSize = 12;
-            
-            % Store panel references for visibility control
-            app.ConnectionTab.UserData = struct('USBPanel', usbPanel, 'WiFiPanel', wifiPanel);
-            
-            % Initialize USB ports
-            app.RefreshUSBPorts();
-        end
 
         function createLivePlotTab(app)
             % Clear existing content
             delete(app.LivePlotTab.Children);
-            
+
             % Main title
             titleLabel = uilabel(app.LivePlotTab);
             titleLabel.Position = [30 580 400 25];
             titleLabel.Text = '📊 Real-time EIS Visualization';
             titleLabel.FontSize = 18;
             titleLabel.FontWeight = 'bold';
-            
-            % Data Source Panel
-            dataSourcePanel = uipanel(app.LivePlotTab);
-            dataSourcePanel.Position = [30 530 900 50];
-            dataSourcePanel.Title = 'Data Source';
-            dataSourcePanel.FontWeight = 'bold';
-            
-            app.UseSimulatedDataCheckBox = uicheckbox(dataSourcePanel);
-            app.UseSimulatedDataCheckBox.Position = [20 10 200 22];
-            app.UseSimulatedDataCheckBox.Text = 'Use Simulated Data';
-            app.UseSimulatedDataCheckBox.Value = false;
-            app.UseSimulatedDataCheckBox.ValueChangedFcn = createCallbackFcn(app, @DataSourceChanged, true);
-            
-            app.DataSourceStatusLabel = uilabel(dataSourcePanel);
-            app.DataSourceStatusLabel.Position = [240 10 620 22];
-            app.DataSourceStatusLabel.Text = 'No ESP32 connection - Please connect hardware or enable simulated data';
-            app.DataSourceStatusLabel.FontColor = [0.8 0.2 0.2];
-            
-            % Control Panel
-            controlPanel = uipanel(app.LivePlotTab);
-            controlPanel.Position = [30 440 900 80]; 
-            controlPanel.Title = 'Measurement Controls';
-            controlPanel.FontWeight = 'bold';
-            
-            % Frequency range controls
-            freqLabel = uilabel(controlPanel);
-            freqLabel.Position = [20 40 120 22];
-            freqLabel.Text = 'Frequency Range:';
-            freqLabel.FontWeight = 'bold';
-            
-            % First row of controls
-            startLabel = uilabel(controlPanel);
-            startLabel.Position = [20 20 60 22];
-            startLabel.Text = 'Start (Hz):';
-            
-            app.FreqStartEditField = uieditfield(controlPanel, 'numeric');
-            app.FreqStartEditField.Position = [85 20 80 22];
-            app.FreqStartEditField.Value = 1;
-            app.FreqStartEditField.Limits = [0.001 1000000];
-            
-            endLabel = uilabel(controlPanel);
-            endLabel.Position = [180 20 60 22];
-            endLabel.Text = 'End (Hz):';
-            
-            app.FreqEndEditField = uieditfield(controlPanel, 'numeric');
-            app.FreqEndEditField.Position = [245 20 80 22];
-            app.FreqEndEditField.Value = 100000;
-            app.FreqEndEditField.Limits = [0.001 1000000];
-            
-            pointsLabel = uilabel(controlPanel);
-            pointsLabel.Position = [340 20 50 22];
-            pointsLabel.Text = 'Points:';
-            
-            app.NumPointsEditField = uieditfield(controlPanel, 'numeric');
-            app.NumPointsEditField.Position = [395 20 60 22];
-            app.NumPointsEditField.Value = 50;
-            app.NumPointsEditField.Limits = [10 200];
-            
-            % Control buttons - PROPERLY SPACED
-            app.StartMeasurementButton = uibutton(controlPanel, 'push');
-            app.StartMeasurementButton.Position = [480 20 120 30];
-            app.StartMeasurementButton.Text = 'Start Measurement';
-            app.StartMeasurementButton.FontWeight = 'bold';
-            app.StartMeasurementButton.BackgroundColor = [0.2 0.7 0.2];
-            app.StartMeasurementButton.FontColor = [1 1 1];
-            app.StartMeasurementButton.ButtonPushedFcn = createCallbackFcn(app, @StartMeasurement, true);
-            
-            app.StopMeasurementButton = uibutton(controlPanel, 'push');
-            app.StopMeasurementButton.Position = [620 20 80 30];
-            app.StopMeasurementButton.Text = 'Stop';
-            app.StopMeasurementButton.BackgroundColor = [0.8 0.2 0.2];
-            app.StopMeasurementButton.FontColor = [1 1 1];
-            app.StopMeasurementButton.Enable = 'off';
-            app.StopMeasurementButton.ButtonPushedFcn = createCallbackFcn(app, @StopMeasurement, true);
-            
-            app.ClearPlotsButton = uibutton(controlPanel, 'push');
-            app.ClearPlotsButton.Position = [720 20 80 30];
-            app.ClearPlotsButton.Text = 'Clear Plots';
-            app.ClearPlotsButton.ButtonPushedFcn = createCallbackFcn(app, @ClearPlots, true);
-            
+
+            % Serial connection panel
+            connectionPanel = uipanel(app.LivePlotTab);
+            connectionPanel.Position = [30 520 900 50];
+            connectionPanel.Title = 'ESP32 Serial Connection';
+            connectionPanel.FontWeight = 'bold';
+
+            % Port selection
+            uilabel(connectionPanel, 'Position', [20 15 60 22], 'Text', 'Port:');
+            app.SerialPortDropDown = uidropdown(connectionPanel);
+            app.SerialPortDropDown.Position = [80 15 120 22];
+            app.SerialPortDropDown.Items = {'Select port...'};
+
+            % Refresh button
+            app.RefreshPortsButton = uibutton(connectionPanel, 'push');
+            app.RefreshPortsButton.Position = [220 15 60 22];
+            app.RefreshPortsButton.Text = 'Refresh';
+            app.RefreshPortsButton.ButtonPushedFcn = createCallbackFcn(app, @RefreshPorts, true);
+
+            % Connect button
+            app.ConnectButton = uibutton(connectionPanel, 'push');
+            app.ConnectButton.Position = [300 15 80 22];
+            app.ConnectButton.Text = 'Connect';
+            app.ConnectButton.BackgroundColor = [0.2 0.7 0.2];
+            app.ConnectButton.FontColor = [1 1 1];
+            app.ConnectButton.ButtonPushedFcn = createCallbackFcn(app, @ConnectSerial, true);
+
+            % Disconnect button
+            app.DisconnectButton = uibutton(connectionPanel, 'push');
+            app.DisconnectButton.Position = [400 15 80 22];
+            app.DisconnectButton.Text = 'Disconnect';
+            app.DisconnectButton.BackgroundColor = [0.8 0.2 0.2];
+            app.DisconnectButton.FontColor = [1 1 1];
+            app.DisconnectButton.Enable = 'off';
+            app.DisconnectButton.ButtonPushedFcn = createCallbackFcn(app, @DisconnectSerial, true);
+
+            % Info label
+            infoLabel = uilabel(app.LivePlotTab);
+            infoLabel.Position = [30 480 700 25];
+            infoLabel.Text = 'ℹ️ Connect to ESP32, then firmware will run measurements automatically';
+            infoLabel.FontSize = 12;
+            infoLabel.FontColor = [0.2 0.4 0.8];
+
             % Create plot panels with adjusted positions
             app.createPlotPanels();
-            
-            % Initialize timer and update status
+
+            % Initialize timer for receiving data
             app.MeasurementTimer = timer('ExecutionMode', 'fixedRate', ...
-                                        'Period', 0.5, ...
+                                        'Period', 0.1, ...
                                         'TimerFcn', @(~,~) app.updateMeasurement());
-            
+
+            % Control buttons
+            clearButton = uibutton(app.LivePlotTab, 'push');
+            clearButton.Position = [800 480 60 30];
+            clearButton.Text = 'Clear';
+            clearButton.ButtonPushedFcn = createCallbackFcn(app, @ClearPlots, true);
+
             % Export Plot Button for Live Plot
             app.ExportLivePlotButton = uibutton(app.LivePlotTab, 'push');
-            app.ExportLivePlotButton.Position = [860 440 60 30];
-            app.ExportLivePlotButton.Text = 'Export Plot';
+            app.ExportLivePlotButton.Position = [880 480 60 30];
+            app.ExportLivePlotButton.Text = 'Export';
             app.ExportLivePlotButton.ButtonPushedFcn = createCallbackFcn(app, @ExportLivePlots, true);
 
-            app.updateDataSourceStatus();
+            % Initialize ports list
+            app.RefreshPorts();
         end
 
         function createPlotPanels(app)
-            % Nyquist Plot Panel - Made larger
+            % Nyquist Plot Panel - Repositioned for new layout
             nyquistPanel = uipanel(app.LivePlotTab);
-            nyquistPanel.Position = [30 150 450 280];  
+            nyquistPanel.Position = [30 180 450 280];
             nyquistPanel.Title = 'Nyquist Plot (Re(Z) vs -Im(Z))';
             nyquistPanel.FontWeight = 'bold';
-            
+
             app.NyquistAxes = uiaxes(nyquistPanel);
-            app.NyquistAxes.Position = [20 20 410 240];  
+            app.NyquistAxes.Position = [20 20 410 240];
             app.NyquistAxes.XLabel.String = 'Real Part (Ω)';
             app.NyquistAxes.YLabel.String = '-Imaginary Part (Ω)';
             app.NyquistAxes.Title.String = '';
             grid(app.NyquistAxes, 'on');
             axis(app.NyquistAxes, 'equal');
-            
-            % Bode Magnitude Plot Panel - Made larger
+
+            % Bode Magnitude Plot Panel
             bodeMagPanel = uipanel(app.LivePlotTab);
-            bodeMagPanel.Position = [500 280 450 150]; 
+            bodeMagPanel.Position = [500 340 450 120];
             bodeMagPanel.Title = 'Bode Plot - Magnitude';
             bodeMagPanel.FontWeight = 'bold';
-            
+
             app.BodeMagAxes = uiaxes(bodeMagPanel);
-            app.BodeMagAxes.Position = [20 20 410 110]; 
+            app.BodeMagAxes.Position = [20 20 410 80];
             app.BodeMagAxes.XLabel.String = 'Frequency (Hz)';
             app.BodeMagAxes.YLabel.String = '|Z| (Ω)';
             app.BodeMagAxes.XScale = 'log';
             app.BodeMagAxes.YScale = 'log';
             app.BodeMagAxes.Title.String = '';
             grid(app.BodeMagAxes, 'on');
-            
-            % Bode Phase Plot Panel - Made larger
+
+            % Bode Phase Plot Panel
             bodePhasePanel = uipanel(app.LivePlotTab);
-            bodePhasePanel.Position = [500 150 450 150];  
+            bodePhasePanel.Position = [500 200 450 120];
             bodePhasePanel.Title = 'Bode Plot - Phase';
             bodePhasePanel.FontWeight = 'bold';
-            
+
             app.BodePhaseAxes = uiaxes(bodePhasePanel);
-            app.BodePhaseAxes.Position = [20 20 410 110];  
+            app.BodePhaseAxes.Position = [20 20 410 80];
             app.BodePhaseAxes.XLabel.String = 'Frequency (Hz)';
             app.BodePhaseAxes.YLabel.String = 'Phase (°)';
             app.BodePhaseAxes.XScale = 'log';
             app.BodePhaseAxes.Title.String = '';
             grid(app.BodePhaseAxes, 'on');
-            
-            % Status display 
+
+            % Status display
             statusPanel = uipanel(app.LivePlotTab);
-            statusPanel.Position = [30 80 920 60];  
-            statusPanel.Title = 'Measurement Status';
+            statusPanel.Position = [30 80 920 90];
+            statusPanel.Title = 'Live Data Status';
             statusPanel.FontWeight = 'bold';
-            
-            app.LivePlotStatusLabel = uilabel(statusPanel);
-            app.LivePlotStatusLabel.Position = [20 20 860 22];  % Made wider
-            app.LivePlotStatusLabel.Text = 'Ready to start measurement';
-            app.LivePlotStatusLabel.FontSize = 12;
+
+            app.LivePlotStatusList = uilistbox(statusPanel);
+            app.LivePlotStatusList.Position = [10 10 900 70];
+            app.LivePlotStatusList.Items = {'Not connected - select port and click Connect'};
+            app.LivePlotStatusList.FontSize = 10;
         end
 
-        function StartMeasurement(app, ~)
-            % Check for valid data source before starting
-            if ~app.IsConnected && ~app.UseSimulatedDataCheckBox.Value
-                EISAppUtils.showWarningAlert(app.UIFigure, ...
-                    ['No valid data source available. Please either:' newline ...
-                     '• Connect to ESP32 hardware, or' newline ...
-                     '• Enable "Use Simulated Data" option for testing'], ...
-                    'No Data Source');
-                return;
-            end
-            
-            try
-                % Prepare frequency vector
-                app.FrequencyVector = logspace(log10(app.FreqStartEditField.Value), ...
-                                             log10(app.FreqEndEditField.Value), ...
-                                             app.NumPointsEditField.Value);
-                
-                % Initialize data storage
-                app.ImpedanceData = complex(zeros(size(app.FrequencyVector)));
-                app.CurrentFrequencyIndex = 1;
-                app.IsRunningMeasurement = true;
-                
-                % Update UI
-                app.StartMeasurementButton.Enable = 'off';
-                app.StopMeasurementButton.Enable = 'on';
-                app.FreqStartEditField.Enable = 'off';
-                app.FreqEndEditField.Enable = 'off';
-                app.NumPointsEditField.Enable = 'off';
-                app.UseSimulatedDataCheckBox.Enable = 'off'; % Lock during measurement
-                
-                % Determine data source for status message
-                if app.IsConnected && ~app.UseSimulatedDataCheckBox.Value
-                    dataSource = 'ESP32 hardware';
-                else
-                    dataSource = 'simulated data';
-                end
-                
-                app.LivePlotStatusLabel.Text = sprintf('Starting measurement using %s: %d points from %.2f Hz to %.2f Hz', ...
-                    dataSource, length(app.FrequencyVector), app.FrequencyVector(1), app.FrequencyVector(end));
-                
-                % Start timer for measurements
-                start(app.MeasurementTimer);
-                
-                % Clear previous plots
-                app.ClearPlots();
-                
-            catch ME
-                EISAppUtils.showErrorAlert(app.UIFigure, ...
-                    sprintf('Failed to start measurement: %s', ME.message), ...
-                    'Measurement Error');
-                app.resetMeasurementUI();
-            end
-        end
+        function addStatusMessage(app, message)
+            % Add a timestamped message to the status list
+            timestamp = string(datetime('now', 'Format', 'HH:mm:ss'));
+            timestampedMessage = sprintf('[%s] %s', timestamp, message);
 
-        function StopMeasurement(app, ~)
-            % Stop EIS measurement
-            if isvalid(app.MeasurementTimer)
-                stop(app.MeasurementTimer);
+            % Add to list
+            currentItems = app.LivePlotStatusList.Items;
+            newItems = [currentItems, {timestampedMessage}];
+
+            % Keep only last 50 messages to prevent memory issues
+            if length(newItems) > 50
+                newItems = newItems(end-49:end);
             end
-            
-            app.IsRunningMeasurement = false;
-            app.resetMeasurementUI();
-            app.LivePlotStatusLabel.Text = sprintf('Measurement stopped at point %d of %d', ...
-                app.CurrentFrequencyIndex-1, length(app.FrequencyVector));
+
+            app.LivePlotStatusList.Items = newItems;
+
+            % Auto-scroll to bottom (latest message)
+            app.LivePlotStatusList.Value = newItems{end};
         end
 
         function ClearPlots(app, ~)
-            % Clear all plots
+            % Clear all plots - useful for clearing received data
             cla(app.NyquistAxes);
             cla(app.BodeMagAxes);
             cla(app.BodePhaseAxes);
-            
+
             % Reset plot properties
             app.NyquistAxes.XLabel.String = 'Real Part (Ω)';
             app.NyquistAxes.YLabel.String = '-Imaginary Part (Ω)';
             grid(app.NyquistAxes, 'on');
             axis(app.NyquistAxes, 'equal');
-            
+
             app.BodeMagAxes.XLabel.String = 'Frequency (Hz)';
             app.BodeMagAxes.YLabel.String = '|Z| (Ω)';
             app.BodeMagAxes.XScale = 'log';
             app.BodeMagAxes.YScale = 'log';
             grid(app.BodeMagAxes, 'on');
-            
+
             app.BodePhaseAxes.XLabel.String = 'Frequency (Hz)';
             app.BodePhaseAxes.YLabel.String = 'Phase (°)';
             app.BodePhaseAxes.XScale = 'log';
             grid(app.BodePhaseAxes, 'on');
-            
-            app.LivePlotStatusLabel.Text = 'Plots cleared';
+
+            app.addStatusMessage('Plots cleared');
         end
 
         function updateMeasurement(app)
-            % Update measurement progress and acquire data
-            if ~app.IsRunningMeasurement || app.CurrentFrequencyIndex > length(app.FrequencyVector)
-                app.StopMeasurement();
-                return;
-            end
-            
+            % Receive and process incoming EIS data from ESP32
             try
-                % Get current frequency
-                currentFreq = app.FrequencyVector(app.CurrentFrequencyIndex);
-                
-                % Determine data source based on connection and user preference
-                if app.IsConnected && ~app.UseSimulatedDataCheckBox.Value
-                    % Use real ESP32 data
-                    impedanceValue = app.getEISDataFromESP32(currentFreq);
-                    dataSource = 'ESP32';
+                if app.IsConnected
+                    % Check for incoming serial data
+                    if app.SerialConnection.NumBytesAvailable > 0
+                        line = readline(app.SerialConnection);
+                        app.processIncomingLine(line);
+                    end
                 else
-                    % Use simulated data (either by choice or necessity)
-                    impedanceValue = app.generateSimulatedEISData(currentFreq);
-                    dataSource = 'simulated';
+                    % Don't spam with this message, only show occasionally
                 end
-                
-                % Store data
-                app.ImpedanceData(app.CurrentFrequencyIndex) = impedanceValue;
-                
-                % Update plots
-                app.updateEISPlots();
-                
-                % Update status with data source info
-                app.LivePlotStatusLabel.Text = sprintf('Measuring (%s): Point %d/%d (%.2f Hz)', ...
-                    dataSource, app.CurrentFrequencyIndex, length(app.FrequencyVector), currentFreq);
-                
-                % Move to next frequency
-                app.CurrentFrequencyIndex = app.CurrentFrequencyIndex + 1;
-                
-                % Check if measurement is complete
-                if app.CurrentFrequencyIndex > length(app.FrequencyVector)
-                    app.StopMeasurement();
-                    app.saveCurrentMeasurement();
-                    app.LivePlotStatusLabel.Text = sprintf('Measurement completed successfully using %s data!', dataSource);
-                    EISAppUtils.showSuccessAlert(app.UIFigure, ...
-                        sprintf('EIS measurement completed successfully using %s data', dataSource), ...
-                        'Measurement Complete');
-                end
-                
+
             catch ME
-                app.StopMeasurement();
-                EISAppUtils.showErrorAlert(app.UIFigure, ...
-                    sprintf('Measurement error: %s', ME.message), ...
-                    'Measurement Error');
+                app.addStatusMessage(sprintf('Data reception error: %s', ME.message));
             end
         end
 
-        function DataSourceChanged(app, ~)
-            % Handle data source checkbox change
-            app.updateDataSourceStatus();
-        end
-
-        function updateDataSourceStatus(app)
-            % Update data source status display
-            if app.IsConnected
-                % ESP32 is connected
-                app.DataSourceStatusLabel.Text = 'ESP32 Connected - Using real hardware data';
-                app.DataSourceStatusLabel.FontColor = [0.2 0.8 0.2]; % Green
-                app.UseSimulatedDataCheckBox.Enable = 'on';
-                app.UseSimulatedDataCheckBox.Value = false; % Prefer real data when available
-            else
-                % No ESP32 connection
-                if app.UseSimulatedDataCheckBox.Value
-                    app.DataSourceStatusLabel.Text = 'No ESP32 connection - Using simulated data for testing';
-                    app.DataSourceStatusLabel.FontColor = [0.8 0.6 0.2]; % Orange
+        function RefreshPorts(app, ~)
+            % Refresh available serial ports
+            try
+                ports = serialportlist("available");
+                if isempty(ports)
+                    app.SerialPortDropDown.Items = {'No ports found'};
+                    app.ConnectButton.Enable = 'off';
                 else
-                    app.DataSourceStatusLabel.Text = 'No ESP32 connection - Please connect hardware or enable simulated data';
-                    app.DataSourceStatusLabel.FontColor = [0.8 0.2 0.2]; % Red
+                    app.SerialPortDropDown.Items = ports;
+                    app.ConnectButton.Enable = 'on';
+                    if isscalar(ports)
+                        app.SerialPortDropDown.Value = ports(1);
+                    end
                 end
-                app.UseSimulatedDataCheckBox.Enable = 'on';
+                app.addStatusMessage(sprintf('Found %d available ports', length(ports)));
+            catch ME
+                app.addStatusMessage(sprintf('Error scanning ports: %s', ME.message));
+                app.SerialPortDropDown.Items = {'Error scanning'};
+                app.ConnectButton.Enable = 'off';
             end
         end
+
+        function ConnectSerial(app, ~)
+            % Connect to selected serial port
+            try
+                selectedPort = app.SerialPortDropDown.Value;
+
+                if strcmp(selectedPort, 'No ports found') || strcmp(selectedPort, 'Error scanning') || strcmp(selectedPort, 'Select port...')
+                    EISAppUtils.showErrorAlert(app.UIFigure, 'Please select a valid port', 'Connection Error');
+                    return;
+                end
+
+                app.addStatusMessage(sprintf('Connecting to %s...', selectedPort));
+
+                % Create serial connection
+                app.SerialConnection = serialport(selectedPort, 115200);
+                app.SerialConnection.Timeout = 5;
+
+                % Update UI
+                app.IsConnected = true;
+                app.ConnectButton.Enable = 'off';
+                app.DisconnectButton.Enable = 'on';
+                app.SerialPortDropDown.Enable = 'off';
+                app.RefreshPortsButton.Enable = 'off';
+
+                % Start timer
+                start(app.MeasurementTimer);
+
+                app.addStatusMessage(sprintf('Connected to %s - waiting for ESP32 data', selectedPort));
+
+                EISAppUtils.showSuccessAlert(app.UIFigure, ...
+                    sprintf('Connected to ESP32 on %s', selectedPort), ...
+                    'Connection Successful');
+
+            catch ME
+                app.addStatusMessage(sprintf('Connection failed: %s', ME.message));
+                EISAppUtils.showErrorAlert(app.UIFigure, ...
+                    sprintf('Connection failed: %s', ME.message), ...
+                    'Connection Error');
+            end
+        end
+
+        function DisconnectSerial(app, ~)
+            % Disconnect from ESP32
+            try
+                if app.IsConnected && ~isempty(app.SerialConnection)
+                    stop(app.MeasurementTimer);
+                    delete(app.SerialConnection);
+                    app.SerialConnection = [];
+                end
+
+                % Update UI
+                app.IsConnected = false;
+                app.ConnectButton.Enable = 'on';
+                app.DisconnectButton.Enable = 'off';
+                app.SerialPortDropDown.Enable = 'on';
+                app.RefreshPortsButton.Enable = 'on';
+
+                app.addStatusMessage('Disconnected successfully');
+
+                EISAppUtils.showSuccessAlert(app.UIFigure, 'Disconnected from ESP32', 'Disconnected');
+
+            catch ME
+                app.addStatusMessage(sprintf('Disconnect error: %s', ME.message));
+                EISAppUtils.showErrorAlert(app.UIFigure, ...
+                    sprintf('Disconnect error: %s', ME.message), ...
+                    'Disconnect Error');
+            end
+        end
+
+        function processIncomingLine(app, line)
+            % Process incoming text line from ESP32
+            try
+                % Parse AD5940 EIS data (format: "Freq:1.44 RzMag: 958066432.000000 Ohm , RzPhase: 0.425207")
+                if contains(line, 'Freq:') && contains(line, 'RzMag:') && contains(line, 'RzPhase:')
+                    % Extract frequency
+                    freq_match = regexp(line, 'Freq:([\d.]+)', 'tokens');
+                    % Extract magnitude
+                    mag_match = regexp(line, 'RzMag:\s*([\d.]+)', 'tokens');
+                    % Extract phase
+                    phase_match = regexp(line, 'RzPhase:\s*([\d.-]+)', 'tokens');
+
+                    if ~isempty(freq_match) && ~isempty(mag_match) && ~isempty(phase_match)
+                        % Parse values
+                        frequency = str2double(freq_match{1}{1});
+                        magnitude = str2double(mag_match{1}{1});
+                        phase = str2double(phase_match{1}{1});
+
+                        % Convert to complex impedance
+                        real_z = magnitude * cos(deg2rad(phase));
+                        imag_z = magnitude * sin(deg2rad(phase));
+                        impedance = complex(real_z, imag_z);
+
+                        % Store data
+                        if isempty(app.FrequencyVector)
+                            app.FrequencyVector = frequency;
+                            app.ImpedanceData = impedance;
+                        else
+                            app.FrequencyVector(end+1) = frequency;
+                            app.ImpedanceData(end+1) = impedance;
+                        end
+
+                        % Update plots
+                        app.updateEISPlots();
+
+                        % Update status
+                        app.addStatusMessage(sprintf('Point %d: f=%.2f Hz, |Z|=%.2f Ω, φ=%.2f°', ...
+                            length(app.FrequencyVector), frequency, magnitude, phase));
+                    end
+                % Parse AD5941 EIS data (format: "Freq: 1.000000 (real, image) = ,123.456 , 78.901 ,mOhm")
+                elseif contains(line, 'Freq:') && contains(line, '(real, image)') && contains(line, 'mOhm')
+                    % Extract frequency and impedance components
+                    tokens = regexp(line, 'Freq:\s*([\d.]+).*=\s*,([\d.-]+)\s*,\s*([\d.-]+)\s*,mOhm', 'tokens');
+
+                    if ~isempty(tokens) && length(tokens{1}) == 3
+                        % Parse values
+                        frequency = str2double(tokens{1}{1});
+                        real_z = str2double(tokens{1}{2}) / 1000; % Convert mOhm to Ohm
+                        imag_z = str2double(tokens{1}{3}) / 1000; % Convert mOhm to Ohm
+
+                        % Create complex impedance
+                        impedance = complex(real_z, imag_z);
+                        magnitude = abs(impedance);
+                        phase = angle(impedance) * 180/pi; % Convert to degrees
+
+                        % Store data
+                        if isempty(app.FrequencyVector)
+                            app.FrequencyVector = frequency;
+                            app.ImpedanceData = impedance;
+                        else
+                            app.FrequencyVector(end+1) = frequency;
+                            app.ImpedanceData(end+1) = impedance;
+                        end
+
+                        % Update plots
+                        app.updateEISPlots();
+
+                        % Update status
+                        app.addStatusMessage(sprintf('Point %d: f=%.2f Hz, |Z|=%.2f Ω, φ=%.2f°', ...
+                            length(app.FrequencyVector), frequency, magnitude, phase));
+                    end
+                % Parse AD5941 calibration data (format: "i: 1   Freq: 1.00  RcalVolt:(-86.000000,50.000000)")
+                elseif contains(line, 'i:') && contains(line, 'Freq:') && contains(line, 'RcalVolt:')
+                    app.addStatusMessage(sprintf('Calibration: %s', line));
+                elseif contains(line, 'Enter choice (1 or 2):')
+                    % Handle board selection prompt
+                    app.addStatusMessage('ESP32 requesting board selection...');
+                else
+                    % Display other ESP32 messages
+                    app.addStatusMessage(sprintf('ESP32: %s', line));
+                end
+
+            catch ME
+                app.addStatusMessage(sprintf('Line processing error: %s', ME.message));
+            end
+        end
+
     
         function impedance = generateSimulatedEISData(app, frequency)
             % Generate simulated EIS data using Randles circuit model
@@ -779,19 +608,6 @@ classdef EISApp < matlab.apps.AppBase
             end
         end
         
-        function resetMeasurementUI(app)
-            % Reset UI after measurement stops
-            app.StartMeasurementButton.Enable = 'on';
-            app.StopMeasurementButton.Enable = 'off';
-            app.FreqStartEditField.Enable = 'on';
-            app.FreqEndEditField.Enable = 'on';
-            app.NumPointsEditField.Enable = 'on';
-            app.UseSimulatedDataCheckBox.Enable = 'on'; % Re-enable after measurement
-            app.IsRunningMeasurement = false;
-            
-            % Update data source status
-            app.updateDataSourceStatus();
-        end
 
         function createDatasetTab(app)
             % Clear existing content
@@ -844,12 +660,12 @@ classdef EISApp < matlab.apps.AppBase
             
             % Dataset Table Panel
             tablePanel = uipanel(app.DatasetTab);
-            tablePanel.Position = [30 280 900 210];
+            tablePanel.Position = [30 300 900 190];
             tablePanel.Title = 'Dataset History';
             tablePanel.FontWeight = 'bold';
             
             app.DatasetTable = uitable(tablePanel);
-            app.DatasetTable.Position = [20 20 860 170];
+            app.DatasetTable.Position = [20 20 860 150];
             app.DatasetTable.ColumnName = {'Filename', 'Date', 'Points', 'Freq Range', 'Sample Name', 'Notes'};
             app.DatasetTable.ColumnWidth = {150, 120, 60, 100, 120, 200};
             app.DatasetTable.ColumnEditable = [false false false false true true];
@@ -858,7 +674,7 @@ classdef EISApp < matlab.apps.AppBase
             
             % Metadata Panel
             metadataPanel = uipanel(app.DatasetTab);
-            metadataPanel.Position = [30 120 900 150];
+            metadataPanel.Position = [30 140 900 150];
             metadataPanel.Title = 'Sample Metadata';
             metadataPanel.FontWeight = 'bold';
             
@@ -917,7 +733,7 @@ classdef EISApp < matlab.apps.AppBase
             
             % Status Panel
             statusPanel = uipanel(app.DatasetTab);
-            statusPanel.Position = [30 50 900 60];
+            statusPanel.Position = [30 70 900 60];
             statusPanel.Title = 'Status';
             statusPanel.FontWeight = 'bold';
             
@@ -1227,11 +1043,7 @@ classdef EISApp < matlab.apps.AppBase
             dataset.metadata.freqRange = sprintf('%.1f-%.1f Hz', min(app.FrequencyVector), max(app.FrequencyVector));
             dataset.metadata.sampleName = char(app.SampleNameEditField.Value); % CHAR format
             dataset.metadata.notes = char(app.SampleNotesTextArea.Value); % CHAR format
-            if app.UseSimulatedDataCheckBox.Value
-                dataset.metadata.dataSource = 'Simulated';
-            else
-                dataset.metadata.dataSource = 'ESP32';
-            end
+            dataset.metadata.dataSource = 'ESP32';
 
             % Set as current dataset
             app.CurrentDataset = dataset;
@@ -1255,7 +1067,7 @@ classdef EISApp < matlab.apps.AppBase
             
             % Model Selection Panel
             modelPanel = uipanel(app.FittingTab);
-            modelPanel.Position = [30 520 900 50];
+            modelPanel.Position = [30 520 530 50];
             modelPanel.Title = 'Circuit Model Selection';
             modelPanel.FontWeight = 'bold';
             
@@ -1284,7 +1096,19 @@ classdef EISApp < matlab.apps.AppBase
             app.ExportFitButton.Text = 'Export Results';
             app.ExportFitButton.Enable = 'off';
             app.ExportFitButton.ButtonPushedFcn = createCallbackFcn(app, @ExportFittingResults, true);
-            
+
+            % Circuit Diagram Panel
+            circuitPanel = uipanel(app.FittingTab);
+            circuitPanel.Position = [580 520 350 50];
+            circuitPanel.Title = 'Circuit Diagram';
+            circuitPanel.FontWeight = 'bold';
+
+            app.CircuitAxes = uiaxes(circuitPanel);
+            app.CircuitAxes.Position = [10 5 330 35];
+            app.CircuitAxes.XTick = [];
+            app.CircuitAxes.YTick = [];
+            app.CircuitAxes.Box = 'off';
+
             % Parameters Panel
             paramPanel = uipanel(app.FittingTab);
             paramPanel.Position = [30 350 430 160];
@@ -1317,13 +1141,13 @@ classdef EISApp < matlab.apps.AppBase
             
             % Plots Panel
             plotsPanel = uipanel(app.FittingTab);
-            plotsPanel.Position = [30 120 900 220];
+            plotsPanel.Position = [30 130 900 210];
             plotsPanel.Title = 'Fit Visualization';
             plotsPanel.FontWeight = 'bold';
             
             % Fitting plot (Nyquist with overlay)
             app.FittingAxes = uiaxes(plotsPanel);
-            app.FittingAxes.Position = [20 20 420 180];
+            app.FittingAxes.Position = [20 20 420 170];
             app.FittingAxes.XLabel.String = 'Real Part (Ω)';
             app.FittingAxes.YLabel.String = '-Imaginary Part (Ω)';
             app.FittingAxes.Title.String = 'Measured vs Fitted Data';
@@ -1331,7 +1155,7 @@ classdef EISApp < matlab.apps.AppBase
             
             % Residuals plot
             app.ResidualsAxes = uiaxes(plotsPanel);
-            app.ResidualsAxes.Position = [460 20 420 180];
+            app.ResidualsAxes.Position = [460 20 420 170];
             app.ResidualsAxes.XLabel.String = 'Frequency (Hz)';
             app.ResidualsAxes.YLabel.String = 'Residuals (%)';
             app.ResidualsAxes.Title.String = 'Fitting Residuals';
@@ -1340,7 +1164,7 @@ classdef EISApp < matlab.apps.AppBase
             
             % Status Panel
             statusPanel = uipanel(app.FittingTab);
-            statusPanel.Position = [30 50 900 60];
+            statusPanel.Position = [30 60 900 60];
             statusPanel.Title = 'Fitting Status';
             statusPanel.FontWeight = 'bold';
             
@@ -1357,13 +1181,140 @@ classdef EISApp < matlab.apps.AppBase
 
             % Initialize with Randles circuit
             app.updateParameterTable();
+            app.drawCircuitDiagram();
         end
 
         function ModelChanged(app, ~)
             % Handle model selection change
             app.CurrentModel = app.ModelDropDown.Value;
             app.updateParameterTable();
+            app.drawCircuitDiagram();
             app.FittingStatusLabel.Text = sprintf('Model changed to: %s', app.CurrentModel);
+        end
+
+        function drawCircuitDiagram(app)
+            % Draw a simple circuit diagram for the selected model
+            cla(app.CircuitAxes);
+            hold(app.CircuitAxes, 'on');
+
+            selectedIndex = find(strcmp(app.ModelDropDown.Value, app.ZfitCircuitNames));
+            if isempty(selectedIndex)
+                selectedIndex = 1;
+            end
+
+            switch selectedIndex
+                case 1 % Randles Circuit: s(Rs,p(Rct,Cdl))
+                    app.drawRandlesCircuit();
+                case 2 % RC Circuit: s(p(R1,C1),R1)
+                    app.drawRCCircuit();
+                case 3 % Warburg Element: s(R1,C1)
+                    app.drawWarburgCircuit();
+            end
+
+            % Set axis properties
+            app.CircuitAxes.XLim = [0 10];
+            app.CircuitAxes.YLim = [0 2];
+            app.CircuitAxes.XTick = [];
+            app.CircuitAxes.YTick = [];
+            app.CircuitAxes.Box = 'off';
+            axis(app.CircuitAxes, 'equal');
+            hold(app.CircuitAxes, 'off');
+        end
+
+        function drawRandlesCircuit(app)
+            % Draw Randles circuit: Rs in series with (Rct || Cdl)
+            % Main line
+            plot(app.CircuitAxes, [0.5 1.5], [1 1], 'k-', 'LineWidth', 2); % Left terminal
+            plot(app.CircuitAxes, [8.5 9.5], [1 1], 'k-', 'LineWidth', 2); % Right terminal
+
+            % Rs (series resistor)
+            plot(app.CircuitAxes, [1.5 3], [1 1], 'k-', 'LineWidth', 2);
+            app.drawResistor(app.CircuitAxes, 2.25, 1, 'Rs');
+
+            % Connection to parallel branch
+            plot(app.CircuitAxes, [3 4], [1 1], 'k-', 'LineWidth', 2);
+            plot(app.CircuitAxes, [7 8.5], [1 1], 'k-', 'LineWidth', 2);
+
+            % Parallel branch - vertical connections
+            plot(app.CircuitAxes, [4 4], [0.5 1.5], 'k-', 'LineWidth', 2);
+            plot(app.CircuitAxes, [7 7], [0.5 1.5], 'k-', 'LineWidth', 2);
+
+            % Rct (top branch)
+            plot(app.CircuitAxes, [4 7], [1.5 1.5], 'k-', 'LineWidth', 2);
+            app.drawResistor(app.CircuitAxes, 5.5, 1.5, 'Rct');
+
+            % Cdl (bottom branch)
+            plot(app.CircuitAxes, [4 7], [0.5 0.5], 'k-', 'LineWidth', 2);
+            app.drawCapacitor(app.CircuitAxes, 5.5, 0.5, 'Cdl');
+
+            % Terminals
+            plot(app.CircuitAxes, 0.5, 1, 'ko', 'MarkerSize', 8, 'MarkerFaceColor', 'k');
+            plot(app.CircuitAxes, 9.5, 1, 'ko', 'MarkerSize', 8, 'MarkerFaceColor', 'k');
+        end
+
+        function drawRCCircuit(app)
+            % Draw RC circuit: (R1 || C1) in series with R1
+            % Main line
+            plot(app.CircuitAxes, [0.5 1.5], [1 1], 'k-', 'LineWidth', 2); % Left terminal
+            plot(app.CircuitAxes, [8.5 9.5], [1 1], 'k-', 'LineWidth', 2); % Right terminal
+
+            % Parallel section first
+            plot(app.CircuitAxes, [1.5 2.5], [1 1], 'k-', 'LineWidth', 2);
+            plot(app.CircuitAxes, [5.5 6.5], [1 1], 'k-', 'LineWidth', 2);
+
+            % Parallel branch - vertical connections
+            plot(app.CircuitAxes, [2.5 2.5], [0.5 1.5], 'k-', 'LineWidth', 2);
+            plot(app.CircuitAxes, [5.5 5.5], [0.5 1.5], 'k-', 'LineWidth', 2);
+
+            % R1 (top branch)
+            plot(app.CircuitAxes, [2.5 5.5], [1.5 1.5], 'k-', 'LineWidth', 2);
+            app.drawResistor(app.CircuitAxes, 4, 1.5, 'R1');
+
+            % C1 (bottom branch)
+            plot(app.CircuitAxes, [2.5 5.5], [0.5 0.5], 'k-', 'LineWidth', 2);
+            app.drawCapacitor(app.CircuitAxes, 4, 0.5, 'C1');
+
+            % Series R1
+            plot(app.CircuitAxes, [6.5 8.5], [1 1], 'k-', 'LineWidth', 2);
+            app.drawResistor(app.CircuitAxes, 7.5, 1, 'R1');
+
+            % Terminals
+            plot(app.CircuitAxes, 0.5, 1, 'ko', 'MarkerSize', 8, 'MarkerFaceColor', 'k');
+            plot(app.CircuitAxes, 9.5, 1, 'ko', 'MarkerSize', 8, 'MarkerFaceColor', 'k');
+        end
+
+        function drawWarburgCircuit(app)
+            % Draw Warburg element: R1 in series with C1
+            % Main line
+            plot(app.CircuitAxes, [0.5 2], [1 1], 'k-', 'LineWidth', 2); % Left terminal
+            plot(app.CircuitAxes, [8 9.5], [1 1], 'k-', 'LineWidth', 2); % Right terminal
+
+            % R1
+            plot(app.CircuitAxes, [2 4.5], [1 1], 'k-', 'LineWidth', 2);
+            app.drawResistor(app.CircuitAxes, 3.25, 1, 'R1');
+
+            % C1
+            plot(app.CircuitAxes, [5.5 8], [1 1], 'k-', 'LineWidth', 2);
+            app.drawCapacitor(app.CircuitAxes, 6.75, 1, 'C1');
+
+            % Terminals
+            plot(app.CircuitAxes, 0.5, 1, 'ko', 'MarkerSize', 8, 'MarkerFaceColor', 'k');
+            plot(app.CircuitAxes, 9.5, 1, 'ko', 'MarkerSize', 8, 'MarkerFaceColor', 'k');
+        end
+
+        function drawResistor(app, ax, x, y, label)
+            % Draw a resistor symbol at position (x,y)
+            w = 0.4; h = 0.15;
+            plot(ax, [x-w x-w/2 x-w/4 x+w/4 x+w/2 x+w], [y y+h y-h y+h y-h y], 'k-', 'LineWidth', 2);
+            text(ax, x, y+0.3, label, 'HorizontalAlignment', 'center', 'FontSize', 8, 'FontWeight', 'bold');
+        end
+
+        function drawCapacitor(app, ax, x, y, label)
+            % Draw a capacitor symbol at position (x,y)
+            gap = 0.1;
+            plot(ax, [x-gap x-gap], [y-0.2 y+0.2], 'k-', 'LineWidth', 3);
+            plot(ax, [x+gap x+gap], [y-0.2 y+0.2], 'k-', 'LineWidth', 3);
+            text(ax, x, y+0.3, label, 'HorizontalAlignment', 'center', 'FontSize', 8, 'FontWeight', 'bold');
         end
 
         function updateParameterTable(app)
@@ -1841,12 +1792,12 @@ classdef EISApp < matlab.apps.AppBase
             
             % Report Content Area
             contentPanel = uipanel(app.ReportTab);
-            contentPanel.Position = [30 120 900 390];
+            contentPanel.Position = [30 140 900 370];
             contentPanel.Title = 'Report Content';
             contentPanel.FontWeight = 'bold';
             
             app.ReportTextArea = uitextarea(contentPanel);
-            app.ReportTextArea.Position = [20 20 860 350];
+            app.ReportTextArea.Position = [20 20 860 330];
             app.ReportTextArea.Editable = 'off';
             app.ReportTextArea.Value = {'Click "Generate Report" to create a comprehensive EIS analysis summary.'};
             app.ReportTextArea.FontName = 'Courier New';
@@ -1854,7 +1805,7 @@ classdef EISApp < matlab.apps.AppBase
             
             % Status Panel
             statusPanel = uipanel(app.ReportTab);
-            statusPanel.Position = [30 50 900 60];
+            statusPanel.Position = [30 70 900 60];
             statusPanel.Title = 'Report Status';
             statusPanel.FontWeight = 'bold';
                        
@@ -2074,13 +2025,13 @@ classdef EISApp < matlab.apps.AppBase
                 % Measurement Parameters
                 reportLines{end+1} = '3. MEASUREMENT PARAMETERS';
                 reportLines{end+1} = '----------------------------------------';
-                if ~isempty(app.FrequencyVector) || app.IsRunningMeasurement
-                    reportLines{end+1} = sprintf('Start Frequency: %.2f Hz', app.FreqStartEditField.Value);
-                    reportLines{end+1} = sprintf('End Frequency: %.2f Hz', app.FreqEndEditField.Value);
-                    reportLines{end+1} = sprintf('Number of Points: %d', app.NumPointsEditField.Value);
-                    reportLines{end+1} = sprintf('Simulated Data: %s', string(app.UseSimulatedDataCheckBox.Value));
+                if ~isempty(app.FrequencyVector)
+                    reportLines{end+1} = sprintf('Start Frequency: %.2f Hz', min(app.FrequencyVector));
+                    reportLines{end+1} = sprintf('End Frequency: %.2f Hz', max(app.FrequencyVector));
+                    reportLines{end+1} = sprintf('Number of Points: %d', length(app.FrequencyVector));
+                    reportLines{end+1} = 'Data Source: ESP32 Firmware';
                 else
-                    reportLines{end+1} = 'No measurement parameters available.';
+                    reportLines{end+1} = 'No measurement data available.';
                 end
                 reportLines{end+1} = '';
                 
@@ -2277,115 +2228,6 @@ classdef EISApp < matlab.apps.AppBase
         end
 
 
-        function connectUSB(app)
-            % Connect via USB Serial
-            selectedPort = app.USBPortDropDown.Value;
-            
-            if strcmp(selectedPort, 'No ports found') || strcmp(selectedPort, 'Error scanning')
-                error('No valid port selected');
-            end
-            
-            app.updateConnectionStatus(false, 'Connecting via USB...');
-            
-            % Create serial connection
-            app.SerialConnection = serialport(selectedPort, 115200);
-            app.SerialConnection.Timeout = 5;
-            
-            % Test connection with handshake
-            if app.testESP32Connection()
-                app.updateConnectionStatus(true, sprintf('Connected via USB on %s', selectedPort));
-                EISAppUtils.showSuccessAlert(app.UIFigure, ...
-                    sprintf('Successfully connected to ESP32 on %s', selectedPort), ...
-                    'USB Connection Successful');
-            else
-                delete(app.SerialConnection);
-                app.SerialConnection = [];
-                error('ESP32 handshake failed');
-            end
-        end
-        
-        function connectWiFi(app)
-            % Connect via Wi-Fi TCP
-            ipAddress = app.WiFiIPEditField.Value;
-            port = 8080;
-            
-            % Validate IP address format
-            if ~app.isValidIP(ipAddress)
-                error('Invalid IP address format');
-            end
-            
-            app.updateConnectionStatus(false, 'Connecting via Wi-Fi...');
-            
-            % Create TCP connection
-            app.WiFiConnection = tcpclient(ipAddress, port, 'Timeout', 10);
-            
-            % Test connection with handshake
-            if app.testESP32Connection()
-                app.updateConnectionStatus(true, sprintf('Connected via Wi-Fi to %s:%d', ipAddress, port));
-                EISAppUtils.showSuccessAlert(app.UIFigure, ...
-                    sprintf('Successfully connected to ESP32 at %s:%d', ipAddress, port), ...
-                    'Wi-Fi Connection Successful');
-            else
-                delete(app.WiFiConnection);
-                app.WiFiConnection = [];
-                error('ESP32 handshake failed');
-            end
-        end
-        
-        function success = testESP32Connection(app)
-            % Test connection with ping-pong handshake
-            success = false;
-            
-            try
-                % Send ping command
-                if strcmp(app.ConnectionType, "USB")
-                    writeline(app.SerialConnection, "ping");
-                    response = readline(app.SerialConnection);
-                else % WiFi
-                    write(app.WiFiConnection, uint8("ping"));
-                    pause(0.1);
-                    response = char(read(app.WiFiConnection, app.WiFiConnection.NumBytesAvailable));
-                end
-                
-                % Check for expected response
-                if contains(response, "pong")
-                    success = true;
-                end
-                
-            catch
-                success = false;
-            end
-        end
-        
-        function updateConnectionStatus(app, connected, message)
-            % Update connection status display
-            app.IsConnected = connected;
-            
-            if connected
-                app.ConnectionIndicatorLamp.Color = [0.2 0.8 0.2]; % Green
-                app.ConnectButton.Enable = 'off';
-                app.DisconnectButton.Enable = 'on';
-                app.StatusLamp.Color = [0.2 0.8 0.2]; % Update main status
-                app.StatusLabel.Text = 'Connected to ESP32';
-            else
-                app.ConnectionIndicatorLamp.Color = [0.8 0.2 0.2]; % Red
-                app.ConnectButton.Enable = 'on';
-                app.DisconnectButton.Enable = 'off';
-                app.StatusLamp.Color = [0.8 0.8 0.8]; % Gray
-                app.StatusLabel.Text = 'Not Connected';
-            end
-            
-            app.ConnectionStatusLabel.Text = message;
-            
-            % Update data source status when connection changes
-            app.updateDataSourceStatus();
-        end
-        
-        function valid = isValidIP(~, ipStr)
-            % Validate IP address format
-            pattern = '^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$';
-            valid = ~isempty(regexp(ipStr, pattern, 'once'));
-        end
     end
 
     % Component initialization
@@ -2417,19 +2259,10 @@ classdef EISApp < matlab.apps.AppBase
         end
 
         function createAllTabs(app)
-            app.createConnectionTabContainer();
             app.createDatasetTabContainer();
             app.createLivePlotTabContainer();
             app.createFittingTabContainer();
             app.createReportTabContainer();
-        end
-
-        function createConnectionTabContainer(app)
-            % Create Connection Tab
-            app.ConnectionTab = uitab(app.TabGroup);
-            app.ConnectionTab.Title = 'Connection';
-            app.ConnectionTab.BackgroundColor = [0.94 0.94 0.94];
-            app.createConnectionTab();
         end
         
         function createDatasetTabContainer(app)
