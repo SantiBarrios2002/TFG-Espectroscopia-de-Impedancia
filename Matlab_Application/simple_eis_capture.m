@@ -34,6 +34,16 @@ try
         port_idx = input('Select port: ');
         selected_port = ports(port_idx);
     end
+
+    % Ask for board selection before connecting
+    fprintf('\nBoard Selection:\n');
+    fprintf('1: AD5940 Impedance Measurement\n');
+    fprintf('2: AD5941 Battery Impedance Measurement\n');
+    board_choice = input('Select board (1 or 2): ');
+
+    if board_choice ~= 1 && board_choice ~= 2
+        error('Invalid board choice. Must be 1 or 2.');
+    end
     
     % Connect to ESP32
     fprintf('Connecting to %s...\n', selected_port);
@@ -41,8 +51,34 @@ try
     serial_conn.Timeout = TIMEOUT_SEC;
     flush(serial_conn);
     pause(1);
-    
-    fprintf('Connected! Waiting for measurement data...\n');
+
+    fprintf('Connected! Waiting for board selection prompt...\n');
+
+    % Wait for board selection prompt and send pre-selected choice
+    board_sent = false;
+    timeout_time = tic;
+
+    while toc(timeout_time) < 10 && ~board_sent
+        if serial_conn.NumBytesAvailable > 0
+            line = readline(serial_conn);
+            fprintf('ESP32: %s\n', line);
+
+            % Check for board selection prompt
+            if contains(line, 'Enter choice (1 or 2):')
+                % Send pre-selected board choice
+                writeline(serial_conn, num2str(board_choice));
+                fprintf('Sent board choice: %d\n', board_choice);
+                board_sent = true;
+            end
+        end
+        pause(0.1);
+    end
+
+    if ~board_sent
+        error('Board selection timeout - no prompt received');
+    end
+
+    fprintf('Board choice sent! Waiting for measurement data...\n');
     fprintf('Press Ctrl+C to stop\n\n');
     
     % Setup plots

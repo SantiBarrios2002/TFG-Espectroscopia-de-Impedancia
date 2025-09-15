@@ -13,12 +13,14 @@ This software is proprietary to Analog Devices, Inc. and its licensors.
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_system.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "esp_task_wdt.h"
+#include "driver/uart.h"
 
 // AD5940 includes
 #include "ad5940.h"
@@ -59,11 +61,11 @@ void ad5940_impedance_task(void *pvParameters)
     ESP_LOGI(TAG, "AD5940 initialized, starting impedance measurements");
     
     // Signal system is ready for this board
-    printf("AD5940_SYSTEM_READY\n");
-    fflush(stdout);
+    ESP_LOGI(TAG, "AD5940_SYSTEM_READY");
 
     // Call AD5940 main function (Impedance.c functionality)
     AD5940_Main();
+    fflush(stdout);
     
     // This should never be reached
     ESP_LOGE(TAG, "AD5940_Main returned unexpectedly");
@@ -88,34 +90,15 @@ void ad5941_battery_task(void *pvParameters)
     ESP_LOGI(TAG, "AD5941 initialized, starting battery impedance measurements");
     
     // Signal system is ready for this board
-    printf("AD5941_SYSTEM_READY\n");
-    fflush(stdout);
+    ESP_LOGI(TAG, "AD5941_SYSTEM_READY");
 
     // Call AD5941 main function (BATImpedance.c functionality)
     AD5941_Main();
+    fflush(stdout);
     
     // This should never be reached
     ESP_LOGE(TAG, "AD5941_Main returned unexpectedly");
     vTaskDelete(NULL);
-}
-
-// Production-ready measurement task that can switch between boards
-void measurement_task(void *pvParameters)
-{
-    ESP_LOGI(TAG, "=== Production Measurement Task Ready ===");
-    ESP_LOGI(TAG, "Waiting for board selection and start commands from server/MATLAB...");
-    
-    // In production, this task would:
-    // 1. Wait for MQTT/server commands to select board
-    // 2. Call board_select(BOARD_AD5940) or board_select(BOARD_AD5941) 
-    // 3. Initialize and run the appropriate measurement function
-    // 4. Stream data back via MQTT/server
-    
-    // For now, just keep the task alive and ready
-    while (1) {
-        ESP_LOGI(TAG, "Measurement system ready - awaiting server integration");
-        vTaskDelay(pdMS_TO_TICKS(10000)); // 10 second heartbeat
-    }
 }
 
 // Main ESP-IDF application entry point
@@ -135,31 +118,23 @@ void app_main(void)
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
-    
+
     // Print available functionality
     ESP_LOGI(TAG, "=== Dual Board Functionality Compiled ===");
-    ESP_LOGI(TAG, "✓ AD5940: Standard impedance spectroscopy ready");
-    ESP_LOGI(TAG, "✓ AD5941: Battery impedance measurement ready");
+    ESP_LOGI(TAG, "AD5940: Standard impedance spectroscopy ready");
+    // ESP_LOGI(TAG, "AD5941: Battery impedance measurement ready");
     ESP_LOGI(TAG, "========================================");
     
-    // Create production measurement task (ready for server integration)
-    BaseType_t task_created = xTaskCreate(
-        measurement_task,         // Task function
-        "measurement_task",       // Task name
-        8192,                     // Stack size (8KB)
-        NULL,                     // Parameters
-        5,                        // Priority
-        NULL                      // Task handle
-    );
-    
-    if (task_created != pdPASS) {
-        ESP_LOGE(TAG, "Failed to create measurement task");
-        return;
+    int board_choice = 1; // Default to AD5940 board
+    ESP_LOGI(TAG, "Board choice: %d", board_choice);
+
+    if (board_choice == 1) {
+        xTaskCreate(ad5940_impedance_task, "ad5940_task", 8192, NULL, 5, NULL);
+    } else if (board_choice == 2) {
+        xTaskCreate(ad5941_battery_task, "ad5941_task", 8192, NULL, 5, NULL);
+    } else {
+        ESP_LOGE(TAG, "Invalid board choice");
+        ESP_LOGE(TAG, "Invalid choice. Please restart and select 1 or 2.");
+        vTaskDelete(NULL);
     }
-    
-    ESP_LOGI(TAG, "Production measurement task created - both AD5940 and AD5941 functionality available");
-    
-    // For individual board testing during development, uncomment one of these:
-    xTaskCreate(ad5940_impedance_task, "ad5940_task", 8192, NULL, 5, NULL);  // AD5940 only
-    // xTaskCreate(ad5941_battery_task, "ad5941_task", 8192, NULL, 5, NULL);    // AD5941 only
 }
