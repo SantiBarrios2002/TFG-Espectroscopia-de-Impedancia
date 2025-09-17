@@ -31,7 +31,7 @@ This software is proprietary to Analog Devices, Inc. and its licensors.
 // Network Configuration
 #define WIFI_SSID "Oneplus"
 #define WIFI_PASSWORD "123456789"
-#define MQTT_BROKER_URI "mqtt://172.18.22.140:1883"
+#define MQTT_BROKER_URI "mqtt://10.59.183.140:1883"
 #define MQTT_PUBLISH_TOPIC "/esp32/data"
 
 static const char *TAG = "DUAL_BOARD_MAIN";
