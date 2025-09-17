@@ -190,9 +190,9 @@ void ad5940_impedance_task(void *pvParameters)
     ESP_LOGI(TAG, "AD5940 initialized, starting impedance measurements");
     
     // Signal system is ready for this board
-    printf("AD5940_SYSTEM_READY\n");
+    ESP_LOGI(TAG, "AD5940_SYSTEM_READY");
     fflush(stdout);
-
+    
     // Call AD5940 main function (Impedance.c functionality)
     AD5940_Main();
     
@@ -219,7 +219,7 @@ void ad5941_battery_task(void *pvParameters)
     ESP_LOGI(TAG, "AD5941 initialized, starting battery impedance measurements");
     
     // Signal system is ready for this board
-    printf("AD5941_SYSTEM_READY\n");
+    ESP_LOGI(TAG, "AD5941_SYSTEM_READY");
     fflush(stdout);
 
     // Call AD5941 main function (BATImpedance.c functionality)
@@ -230,24 +230,6 @@ void ad5941_battery_task(void *pvParameters)
     vTaskDelete(NULL);
 }
 
-// Production-ready measurement task that can switch between boards
-void measurement_task(void *pvParameters)
-{
-    ESP_LOGI(TAG, "=== Production Measurement Task Ready ===");
-    ESP_LOGI(TAG, "Waiting for board selection and start commands from server/MATLAB...");
-    
-    // In production, this task would:
-    // 1. Wait for MQTT/server commands to select board
-    // 2. Call board_select(BOARD_AD5940) or board_select(BOARD_AD5941) 
-    // 3. Initialize and run the appropriate measurement function
-    // 4. Stream data back via MQTT/server
-    
-    // For now, just keep the task alive and ready
-    while (1) {
-        ESP_LOGI(TAG, "Measurement system ready - awaiting server integration");
-        vTaskDelay(pdMS_TO_TICKS(10000)); // 10 second heartbeat
-    }
-}
 
 // Main ESP-IDF application entry point
 void app_main(void)
@@ -279,27 +261,10 @@ void app_main(void)
     // Print available functionality
     ESP_LOGI(TAG, "=== Dual Board Functionality Compiled ===");
     ESP_LOGI(TAG, "✓ AD5940: Standard impedance spectroscopy ready");
-    ESP_LOGI(TAG, "✓ AD5941: Battery impedance measurement ready");
+    // ESP_LOGI(TAG, "✓ AD5941: Battery impedance measurement ready");
     ESP_LOGI(TAG, "========================================");
     
-    // Create production measurement task (ready for server integration)
-    BaseType_t task_created = xTaskCreate(
-        measurement_task,         // Task function
-        "measurement_task",       // Task name
-        8192,                     // Stack size (8KB)
-        NULL,                     // Parameters
-        5,                        // Priority
-        NULL                      // Task handle
-    );
-    
-    if (task_created != pdPASS) {
-        ESP_LOGE(TAG, "Failed to create measurement task");
-        return;
-    }
-    
-    ESP_LOGI(TAG, "Production measurement task created - both AD5940 and AD5941 functionality available");
-    
-    // For individual board testing during development, uncomment one of these:
+    // For individual board selection, uncomment one of these:
     xTaskCreate(ad5940_impedance_task, "ad5940_task", 8192, NULL, 5, NULL);  // AD5940 only
     // xTaskCreate(ad5941_battery_task, "ad5941_task", 8192, NULL, 5, NULL);    // AD5941 only
 }

@@ -35,6 +35,12 @@ int32_t BATShowResult(uint32_t *pData, uint32_t DataCount)
   for(int i=0;i<DataCount;i++)
   {
     printf("Freq: %f (real, image) = ,%f , %f ,mOhm \n",freq, pImp[i].Real,pImp[i].Image);
+
+    // Publish battery impedance data via MQTT
+    extern void publish_impedance_data(double frequency, double magnitude, double phase);
+    float magnitude = sqrtf(pImp[i].Real * pImp[i].Real + pImp[i].Image * pImp[i].Image);
+    float phase = atan2f(pImp[i].Image, pImp[i].Real) * 180.0f / MATH_PI; // Convert to degrees
+    publish_impedance_data((double)freq, (double)magnitude, (double)phase); 
   }
   return 0;
 }
