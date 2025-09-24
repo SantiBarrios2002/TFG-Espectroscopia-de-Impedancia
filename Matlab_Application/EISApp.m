@@ -82,8 +82,8 @@ classdef EISApp < matlab.apps.AppBase
         FittedParameters        double
         FitQuality              struct
       
-        ZfitCircuitStrings    cell = {'s(R1,p(R1,C1))', 's(p(R1,C1),R1)', 's(R1,C1)'}
-        ZfitCircuitNames      cell = {'Randles Circuit', 'RC Circuit', 'Warburg Element'}
+        ZfitCircuitStrings    cell = {'s(R1,p(R1,E2))', 's(R1,p(s(R1,G2),E2))', 's(R1,p(s(R1,H2),E2))'}
+        ZfitCircuitNames      cell = {'Randles Circuit', 'Randles + Warburg (Short)', 'Randles + Warburg (Open)'}
         
         % Report Tab components
         ReportTab                matlab.ui.container.Tab
@@ -499,28 +499,57 @@ classdef EISApp < matlab.apps.AppBase
 
     
         function impedance = generateSimulatedEISData(app, frequency)
-            % Generate simulated EIS data using Randles circuit model
+            % Generate simulated EIS data based on selected circuit model
+
+            % Get selected model
+            selectedIndex = find(strcmp(app.ModelDropDown.Value, app.ZfitCircuitNames));
+
             % Parameters for simulation
-            Rs = 0.1;      % Solution resistance (Ohms)
-            Rct = 0.5;     % Charge transfer resistance (Ohms)
-            Cdl = 1e-3;    % Double layer capacitance (F)
-            sigma = 0.02;  % Warburg coefficient
-            
+            Rs = 0.1;       % Solution resistance (Ohms)
+            Rct = 0.5;      % Charge transfer resistance (Ohms)
+            Q = 1e-3;       % CPE magnitude parameter (F⋅s^(n-1))
+            n = 0.9;        % CPE phase exponent (dimensionless)
+            sigma = 0.02;   % Warburg coefficient (Ω⋅s^-0.5)
+            B = 0.1;        % Warburg B parameter (s^-0.5)
+
             % Angular frequency
             omega = 2 * pi * frequency;
-            
-            % Warburg impedance (simplified)
-            Zw = sigma / sqrt(omega) * (1 - 1i);
-            
-            % Double layer capacitance impedance
-            Zcap = 1 / (1i * omega * Cdl);
-            
-            % Parallel combination of Rct and Cdl
-            Zparallel = (Rct * Zcap) / (Rct + Zcap);
-            
-            % Total impedance: Rs + (Rct || Cdl) + Zw
-            impedance = Rs + Zparallel + Zw;
-            
+
+            % CPE impedance: Z_CPE = 1/(Q*(jω)^n)
+            Zcpe = 1 ./ (Q * (1i * omega).^n);
+
+            switch selectedIndex
+                case 1 % Standard Randles Circuit: s(R1,p(R1,E2))
+                    % Parallel combination of Rct and CPE
+                    Zparallel = (Rct .* Zcpe) ./ (Rct + Zcpe);
+                    % Total impedance: Rs + (Rct || CPE)
+                    impedance = Rs + Zparallel;
+
+                case 2 % Randles + Warburg (Short): s(R1,p(s(R1,G2),E2))
+                    % Warburg impedance with short circuit boundary
+                    Zw = (1 ./ (sigma * sqrt(1i * omega))) .* tanh(B * sqrt(1i * omega));
+                    % Series combination of Rct and Warburg
+                    Zseries = Rct + Zw;
+                    % Parallel combination with CPE
+                    Zparallel = (Zseries .* Zcpe) ./ (Zseries + Zcpe);
+                    % Total impedance: Rs + ((Rct + Zw) || CPE)
+                    impedance = Rs + Zparallel;
+
+                case 3 % Randles + Warburg (Open): s(R1,p(s(R1,H2),E2))
+                    % Warburg impedance with open circuit boundary
+                    Zw = (1 ./ (sigma * sqrt(1i * omega))) ./ tanh(B * sqrt(1i * omega));
+                    % Series combination of Rct and Warburg
+                    Zseries = Rct + Zw;
+                    % Parallel combination with CPE
+                    Zparallel = (Zseries .* Zcpe) ./ (Zseries + Zcpe);
+                    % Total impedance: Rs + ((Rct + Zw) || CPE)
+                    impedance = Rs + Zparallel;
+
+                otherwise % Default to standard Randles
+                    Zparallel = (Rct .* Zcpe) ./ (Rct + Zcpe);
+                    impedance = Rs + Zparallel;
+            end
+
             % Add some noise for realism
             noise = 0.01 * (randn + 1i * randn);
             impedance = impedance + noise;
@@ -1078,7 +1107,7 @@ classdef EISApp < matlab.apps.AppBase
             
             app.ModelDropDown = uidropdown(modelPanel);
             app.ModelDropDown.Position = [130 15 150 22];
-            app.ModelDropDown.Items = {'Randles Circuit', 'RC Circuit', 'Warburg Element'};
+            app.ModelDropDown.Items = {'Randles Circuit', 'Randles + Warburg (Short)', 'Randles + Warburg (Open)'};
             app.ModelDropDown.Value = 'Randles Circuit';
             app.ModelDropDown.ValueChangedFcn = createCallbackFcn(app, @ModelChanged, true);
             
@@ -1205,10 +1234,10 @@ classdef EISApp < matlab.apps.AppBase
             switch selectedIndex
                 case 1 % Randles Circuit: s(Rs,p(Rct,Cdl))
                     app.drawRandlesCircuit();
-                case 2 % RC Circuit: s(p(R1,C1),R1)
-                    app.drawRCCircuit();
-                case 3 % Warburg Element: s(R1,C1)
-                    app.drawWarburgCircuit();
+                case 2 % Randles + Warburg (Short): s(Rs,p(s(Rct,Gw),Cdl))
+                    app.drawRandlesWarburgCircuit('G');
+                case 3 % Randles + Warburg (Open): s(Rs,p(s(Rct,Hw),Cdl))
+                    app.drawRandlesWarburgCircuit('H');
             end
 
             % Set axis properties
@@ -1243,63 +1272,80 @@ classdef EISApp < matlab.apps.AppBase
             plot(app.CircuitAxes, [4 7], [1.5 1.5], 'k-', 'LineWidth', 2);
             app.drawResistor(app.CircuitAxes, 5.5, 1.5, 'Rct');
 
-            % Cdl (bottom branch)
+            % CPE (bottom branch)
             plot(app.CircuitAxes, [4 7], [0.5 0.5], 'k-', 'LineWidth', 2);
-            app.drawCapacitor(app.CircuitAxes, 5.5, 0.5, 'Cdl');
+            app.drawCPE(app.CircuitAxes, 5.5, 0.5, 'CPE');
 
             % Terminals
             plot(app.CircuitAxes, 0.5, 1, 'ko', 'MarkerSize', 8, 'MarkerFaceColor', 'k');
             plot(app.CircuitAxes, 9.5, 1, 'ko', 'MarkerSize', 8, 'MarkerFaceColor', 'k');
         end
 
-        function drawRCCircuit(app)
-            % Draw RC circuit: (R1 || C1) in series with R1
-            % Main line
+        function drawRandlesWarburgCircuit(app, warburgType)
+            % Draw Randles circuit with Warburg element: Rs + (Rct+Warburg || Cdl)
+            % warburgType: 'G' for short circuit, 'H' for open circuit
+            cla(app.CircuitAxes);
+            hold(app.CircuitAxes, 'on');
+
+            % Main horizontal line
             plot(app.CircuitAxes, [0.5 1.5], [1 1], 'k-', 'LineWidth', 2); % Left terminal
             plot(app.CircuitAxes, [8.5 9.5], [1 1], 'k-', 'LineWidth', 2); % Right terminal
 
-            % Parallel section first
-            plot(app.CircuitAxes, [1.5 2.5], [1 1], 'k-', 'LineWidth', 2);
-            plot(app.CircuitAxes, [5.5 6.5], [1 1], 'k-', 'LineWidth', 2);
+            % Rs (series resistor)
+            plot(app.CircuitAxes, [1.5 3], [1 1], 'k-', 'LineWidth', 2);
+            app.drawResistor(app.CircuitAxes, 2.25, 1, 'Rs');
 
-            % Parallel branch - vertical connections
-            plot(app.CircuitAxes, [2.5 2.5], [0.5 1.5], 'k-', 'LineWidth', 2);
-            plot(app.CircuitAxes, [5.5 5.5], [0.5 1.5], 'k-', 'LineWidth', 2);
+            % Parallel section connections
+            plot(app.CircuitAxes, [3 4], [1 1], 'k-', 'LineWidth', 2);
+            plot(app.CircuitAxes, [7 8.5], [1 1], 'k-', 'LineWidth', 2);
 
-            % R1 (top branch)
-            plot(app.CircuitAxes, [2.5 5.5], [1.5 1.5], 'k-', 'LineWidth', 2);
-            app.drawResistor(app.CircuitAxes, 4, 1.5, 'R1');
+            % Vertical connections for parallel branches
+            plot(app.CircuitAxes, [4 4], [0.3 1.7], 'k-', 'LineWidth', 2);
+            plot(app.CircuitAxes, [7 7], [0.3 1.7], 'k-', 'LineWidth', 2);
 
-            % C1 (bottom branch)
-            plot(app.CircuitAxes, [2.5 5.5], [0.5 0.5], 'k-', 'LineWidth', 2);
-            app.drawCapacitor(app.CircuitAxes, 4, 0.5, 'C1');
+            % Top branch: Rct in series with Warburg
+            plot(app.CircuitAxes, [4 4.8], [1.7 1.7], 'k-', 'LineWidth', 2);
+            plot(app.CircuitAxes, [5.5 6.2], [1.7 1.7], 'k-', 'LineWidth', 2);
+            plot(app.CircuitAxes, [6.8 7], [1.7 1.7], 'k-', 'LineWidth', 2);
 
-            % Series R1
-            plot(app.CircuitAxes, [6.5 8.5], [1 1], 'k-', 'LineWidth', 2);
-            app.drawResistor(app.CircuitAxes, 7.5, 1, 'R1');
+            % Draw Rct
+            app.drawResistor(app.CircuitAxes, 5.15, 1.7, 'Rct');
+
+            % Draw Warburg element
+            if strcmp(warburgType, 'G')
+                app.drawWarburg(app.CircuitAxes, 6.5, 1.7, 'Gw', 'Short');
+            else
+                app.drawWarburg(app.CircuitAxes, 6.5, 1.7, 'Hw', 'Open');
+            end
+
+            % Bottom branch: CPE (Q,n)
+            plot(app.CircuitAxes, [4 7], [0.3 0.3], 'k-', 'LineWidth', 2);
+            app.drawCPE(app.CircuitAxes, 5.5, 0.3, 'CPE');
 
             % Terminals
             plot(app.CircuitAxes, 0.5, 1, 'ko', 'MarkerSize', 8, 'MarkerFaceColor', 'k');
             plot(app.CircuitAxes, 9.5, 1, 'ko', 'MarkerSize', 8, 'MarkerFaceColor', 'k');
         end
 
-        function drawWarburgCircuit(app)
-            % Draw Warburg element: R1 in series with C1
-            % Main line
-            plot(app.CircuitAxes, [0.5 2], [1 1], 'k-', 'LineWidth', 2); % Left terminal
-            plot(app.CircuitAxes, [8 9.5], [1 1], 'k-', 'LineWidth', 2); % Right terminal
+        function drawWarburg(app, ax, x, y, label, type)
+            % Draw a Warburg element symbol at position (x,y)
+            % type: 'Short' or 'Open'
+            w = 0.3; h = 0.2;
 
-            % R1
-            plot(app.CircuitAxes, [2 4.5], [1 1], 'k-', 'LineWidth', 2);
-            app.drawResistor(app.CircuitAxes, 3.25, 1, 'R1');
+            % Draw zigzag pattern for Warburg
+            plot(ax, [x-w x-w/2 x x+w/2 x+w], [y y+h y-h y+h y], 'k-', 'LineWidth', 2);
 
-            % C1
-            plot(app.CircuitAxes, [5.5 8], [1 1], 'k-', 'LineWidth', 2);
-            app.drawCapacitor(app.CircuitAxes, 6.75, 1, 'C1');
+            % Add boundary condition indicator
+            if strcmp(type, 'Short')
+                % Short circuit - line at end
+                plot(ax, [x+w x+w], [y-h/2 y+h/2], 'k-', 'LineWidth', 3);
+            else
+                % Open circuit - gap at end
+                plot(ax, [x+w-0.05 x+w-0.05], [y-h/2 y+h/2], 'k-', 'LineWidth', 3);
+                plot(ax, [x+w+0.05 x+w+0.05], [y-h/2 y+h/2], 'k-', 'LineWidth', 3);
+            end
 
-            % Terminals
-            plot(app.CircuitAxes, 0.5, 1, 'ko', 'MarkerSize', 8, 'MarkerFaceColor', 'k');
-            plot(app.CircuitAxes, 9.5, 1, 'ko', 'MarkerSize', 8, 'MarkerFaceColor', 'k');
+            text(ax, x, y+0.35, label, 'HorizontalAlignment', 'center', 'FontSize', 8, 'FontWeight', 'bold');
         end
 
         function drawResistor(app, ax, x, y, label)
@@ -1317,33 +1363,55 @@ classdef EISApp < matlab.apps.AppBase
             text(ax, x, y+0.3, label, 'HorizontalAlignment', 'center', 'FontSize', 8, 'FontWeight', 'bold');
         end
 
+        function drawCPE(app, ax, x, y, label)
+            % Draw a CPE (Constant Phase Element) symbol at position (x,y)
+            gap = 0.1;
+            % Left plate (straight line)
+            plot(ax, [x-gap x-gap], [y-0.2 y+0.2], 'k-', 'LineWidth', 3);
+            % Right plate (curved line to indicate non-ideal behavior)
+            theta = linspace(-pi/3, pi/3, 20);
+            curve_x = x + gap + 0.02 * cos(theta + pi/2);
+            curve_y = y + 0.2 * sin(theta);
+            plot(ax, curve_x, curve_y, 'k-', 'LineWidth', 3);
+            text(ax, x, y+0.3, label, 'HorizontalAlignment', 'center', 'FontSize', 8, 'FontWeight', 'bold');
+        end
+
         function updateParameterTable(app)
             % Update parameter table based on selected model using Zfit notation
             selectedIndex = find(strcmp(app.ModelDropDown.Value, app.ZfitCircuitNames));
             
             switch selectedIndex
-                case 1 % Randles Circuit: s(R1,p(R1,C1)) - 3 parameters
+                case 1 % Randles Circuit: s(R1,p(R1,E2)) - 4 parameters
                     paramData = {
                         'Rs', 'Rs', 100, 'Ω';
                         'Rct', 'Rct', 1000, 'Ω';
-                        'Cdl', 'Cdl', 1e-6, 'F'
+                        'Q', 'CPE_Q', 1e-6, 'F⋅s^(n-1)';
+                        'n', 'CPE_n', 0.9, '-'
                     };
-                case 2 % RC Circuit: s(p(R1,C1),R1) - 3 parameters  
-                    paramData = {
-                        'R1', 'R1', 100, 'Ω';
-                        'C1', 'C1', 1e-6, 'F';
-                        'R2', 'R2', 1000, 'Ω'
-                    };
-                case 3 % Warburg Element: s(R1,C1) - 2 parameters
+                case 2 % Randles + Warburg (Short): s(R1,p(s(R1,G2),E2)) - 6 parameters
                     paramData = {
                         'Rs', 'Rs', 100, 'Ω';
-                        'C1', 'C1', 1e-6, 'F'
+                        'Rct', 'Rct', 1000, 'Ω';
+                        'σ', 'Warburg_sigma', 0.02, 'Ω⋅s^-0.5';
+                        'B', 'Warburg_B', 0.1, 's^-0.5';
+                        'Q', 'CPE_Q', 1e-6, 'F⋅s^(n-1)';
+                        'n', 'CPE_n', 0.9, '-'
+                    };
+                case 3 % Randles + Warburg (Open): s(R1,p(s(R1,H2),E2)) - 6 parameters
+                    paramData = {
+                        'Rs', 'Rs', 100, 'Ω';
+                        'Rct', 'Rct', 1000, 'Ω';
+                        'σ', 'Warburg_sigma', 0.02, 'Ω⋅s^-0.5';
+                        'B', 'Warburg_B', 0.1, 's^-0.5';
+                        'Q', 'CPE_Q', 1e-6, 'F⋅s^(n-1)';
+                        'n', 'CPE_n', 0.9, '-'
                     };
                 otherwise % Default case
                     paramData = {
                         'Rs', 'Rs', 100, 'Ω';
                         'Rct', 'Rct', 1000, 'Ω';
-                        'Cdl', 'Cdl', 1e-6, 'F'
+                        'Q', 'CPE_Q', 1e-6, 'F⋅s^(n-1)';
+                        'n', 'CPE_n', 0.9, '-'
                     };
             end
             
