@@ -59,6 +59,10 @@ classdef EISApp < matlab.apps.AppBase
         SampleNameEditField      matlab.ui.control.EditField
         SampleNotesTextArea      matlab.ui.control.TextArea
         DatasetStatusLabel       matlab.ui.control.Label
+        PlotDatasetButton        matlab.ui.control.Button
+        BodePlotTypeDropDown     matlab.ui.control.DropDown
+        DatasetNyquistAxes       matlab.ui.control.UIAxes
+        DatasetBodeAxes          matlab.ui.control.UIAxes
         
         % Dataset storage
         CurrentDataset           struct
@@ -686,15 +690,35 @@ classdef EISApp < matlab.apps.AppBase
             exportButton.Position = [440 25 100 30];
             exportButton.Text = 'Export Data';
             exportButton.ButtonPushedFcn = createCallbackFcn(app, @ExportDataset, true);
+
+            app.PlotDatasetButton = uibutton(filePanel, 'push');
+            app.PlotDatasetButton.Position = [560 25 100 30];
+            app.PlotDatasetButton.Text = 'Plot Data';
+            app.PlotDatasetButton.FontWeight = 'bold';
+            app.PlotDatasetButton.BackgroundColor = [0.8 0.2 0.6];
+            app.PlotDatasetButton.FontColor = [1 1 1];
+            app.PlotDatasetButton.Enable = 'off';
+            app.PlotDatasetButton.ButtonPushedFcn = createCallbackFcn(app, @PlotLoadedDataset, true);
+
+            % Bode plot type selection
+            bodeLabel = uilabel(filePanel);
+            bodeLabel.Position = [680 35 80 22];
+            bodeLabel.Text = 'Bode Plot:';
+
+            app.BodePlotTypeDropDown = uidropdown(filePanel);
+            app.BodePlotTypeDropDown.Position = [680 10 100 22];
+            app.BodePlotTypeDropDown.Items = {'Magnitude', 'Phase'};
+            app.BodePlotTypeDropDown.Value = 'Magnitude';
+            app.BodePlotTypeDropDown.ValueChangedFcn = createCallbackFcn(app, @BodePlotTypeChanged, true);
             
             % Dataset Table Panel
             tablePanel = uipanel(app.DatasetTab);
-            tablePanel.Position = [30 300 900 190];
+            tablePanel.Position = [30 380 900 110];
             tablePanel.Title = 'Dataset History';
             tablePanel.FontWeight = 'bold';
             
             app.DatasetTable = uitable(tablePanel);
-            app.DatasetTable.Position = [20 20 860 150];
+            app.DatasetTable.Position = [20 20 860 70];
             app.DatasetTable.ColumnName = {'Filename', 'Date', 'Points', 'Freq Range', 'Sample Name', 'Notes'};
             app.DatasetTable.ColumnWidth = {150, 120, 60, 100, 120, 200};
             app.DatasetTable.ColumnEditable = [false false false false true true];
@@ -703,66 +727,92 @@ classdef EISApp < matlab.apps.AppBase
             
             % Metadata Panel
             metadataPanel = uipanel(app.DatasetTab);
-            metadataPanel.Position = [30 140 900 150];
+            metadataPanel.Position = [30 260 900 110];
             metadataPanel.Title = 'Sample Metadata';
             metadataPanel.FontWeight = 'bold';
             
             % Sample name
             nameLabel = uilabel(metadataPanel);
-            nameLabel.Position = [20 100 100 22];
+            nameLabel.Position = [20 70 100 22];
             nameLabel.Text = 'Sample Name:';
             nameLabel.FontWeight = 'bold';
-            
+
             app.SampleNameEditField = uieditfield(metadataPanel, 'text');
-            app.SampleNameEditField.Position = [130 100 200 22];
+            app.SampleNameEditField.Position = [130 70 200 22];
             app.SampleNameEditField.Placeholder = 'Enter sample name';
             app.SampleNameEditField.ValueChangedFcn = createCallbackFcn(app, @UpdateMetadata, true);
-            
+
             % Date and time (auto-filled)
             dateLabel = uilabel(metadataPanel);
-            dateLabel.Position = [350 100 80 22];
+            dateLabel.Position = [350 70 80 22];
             dateLabel.Text = 'Date/Time:';
             dateLabel.FontWeight = 'bold';
-            
+
             dateValue = uilabel(metadataPanel);
-            dateValue.Position = [440 100 150 22];
+            dateValue.Position = [440 70 150 22];
             dateValue.Text = string(datetime('now', 'Format', 'yyyy-MM-dd HH:mm'));
-            
+
             % Notes
             notesLabel = uilabel(metadataPanel);
-            notesLabel.Position = [20 70 100 22];
+            notesLabel.Position = [20 45 100 22];
             notesLabel.Text = 'Notes:';
             notesLabel.FontWeight = 'bold';
-            
+
             app.SampleNotesTextArea = uitextarea(metadataPanel);
-            app.SampleNotesTextArea.Position = [20 20 560 45];
+            app.SampleNotesTextArea.Position = [20 10 560 30];
             app.SampleNotesTextArea.Placeholder = 'Enter measurement notes, conditions, or observations...';
             app.SampleNotesTextArea.ValueChangedFcn = createCallbackFcn(app, @UpdateMetadata, true);
-            
+
             % Quick metadata buttons
             quickLabel = uilabel(metadataPanel);
-            quickLabel.Position = [600 100 100 22];
+            quickLabel.Position = [600 70 100 22];
             quickLabel.Text = 'Quick Tags:';
             quickLabel.FontWeight = 'bold';
-            
+
             tempButton = uibutton(metadataPanel, 'push');
-            tempButton.Position = [600 70 80 25];
+            tempButton.Position = [600 40 80 25];
             tempButton.Text = 'Add Temp';
             tempButton.ButtonPushedFcn = @(~,~) app.addQuickTag('Temperature: °C');
-            
+
             socButton = uibutton(metadataPanel, 'push');
-            socButton.Position = [690 70 80 25];
+            socButton.Position = [690 40 80 25];
             socButton.Text = 'Add SOC';
             socButton.ButtonPushedFcn = @(~,~) app.addQuickTag('SOC: %');
-            
+
             cycleButton = uibutton(metadataPanel, 'push');
-            cycleButton.Position = [780 70 80 25];
+            cycleButton.Position = [780 40 80 25];
             cycleButton.Text = 'Add Cycle';
             cycleButton.ButtonPushedFcn = @(~,~) app.addQuickTag('Cycle: ');
             
+            % Plot Panel
+            plotPanel = uipanel(app.DatasetTab);
+            plotPanel.Position = [30 100 900 150];
+            plotPanel.Title = 'Dataset Plots';
+            plotPanel.FontWeight = 'bold';
+
+            % Nyquist plot
+            app.DatasetNyquistAxes = uiaxes(plotPanel);
+            app.DatasetNyquistAxes.Position = [20 20 420 110];
+            app.DatasetNyquistAxes.Title.String = 'Nyquist Plot';
+            app.DatasetNyquistAxes.XLabel.String = 'Real Impedance (Ω)';
+            app.DatasetNyquistAxes.YLabel.String = 'Imaginary Impedance (Ω)';
+            app.DatasetNyquistAxes.Box = 'on';
+            app.DatasetNyquistAxes.FontSize = 10;
+
+            % Bode plot
+            app.DatasetBodeAxes = uiaxes(plotPanel);
+            app.DatasetBodeAxes.Position = [460 20 420 110];
+            app.DatasetBodeAxes.Title.String = 'Bode Magnitude';
+            app.DatasetBodeAxes.XLabel.String = 'Frequency (Hz)';
+            app.DatasetBodeAxes.YLabel.String = '|Z| (Ω)';
+            app.DatasetBodeAxes.XScale = 'log';
+            app.DatasetBodeAxes.YScale = 'log';
+            app.DatasetBodeAxes.Box = 'on';
+            app.DatasetBodeAxes.FontSize = 10;
+
             % Status Panel
             statusPanel = uipanel(app.DatasetTab);
-            statusPanel.Position = [30 70 900 60];
+            statusPanel.Position = [30 30 900 60];
             statusPanel.Title = 'Status';
             statusPanel.FontWeight = 'bold';
             
@@ -813,7 +863,8 @@ classdef EISApp < matlab.apps.AppBase
                 app.CurrentDataset = dataset;
                 app.updateDatasetUI(dataset);
                 app.SaveDatasetButton.Enable = 'on';
-                
+                app.PlotDatasetButton.Enable = 'on';
+
                 app.DatasetStatusLabel.Text = sprintf('Loaded: %s (%d points, %.1f-%.1f Hz)', ...
                     filename, length(dataset.frequency), min(dataset.frequency), max(dataset.frequency));
                 
@@ -914,6 +965,104 @@ classdef EISApp < matlab.apps.AppBase
                 EISAppUtils.showErrorAlert(app.UIFigure, ...
                     sprintf('Failed to export dataset: %s', ME.message), ...
                     'Export Error');
+            end
+        end
+
+        function PlotLoadedDataset(app, ~)
+            % Plot the currently loaded dataset
+            if isempty(app.CurrentDataset)
+                EISAppUtils.showWarningAlert(app.UIFigure, ...
+                    'No dataset to plot. Please load a dataset first.', ...
+                    'No Data');
+                return;
+            end
+
+            if ~isfield(app.CurrentDataset, 'frequency') || ~isfield(app.CurrentDataset, 'impedance')
+                EISAppUtils.showErrorAlert(app.UIFigure, ...
+                    'Invalid dataset structure. Missing frequency or impedance data.', ...
+                    'Invalid Data');
+                return;
+            end
+
+            try
+                frequency = app.CurrentDataset.frequency;
+                impedance = app.CurrentDataset.impedance;
+
+                % Clear previous plots
+                cla(app.DatasetNyquistAxes);
+
+                % Nyquist plot (Real vs -Imaginary impedance)
+                plot(app.DatasetNyquistAxes, real(impedance), -imag(impedance), 'bo-', ...
+                    'LineWidth', 1.5, 'MarkerSize', 4, 'MarkerFaceColor', 'b');
+                app.DatasetNyquistAxes.Title.String = 'Nyquist Plot';
+                app.DatasetNyquistAxes.XLabel.String = 'Real Impedance (Ω)';
+                app.DatasetNyquistAxes.YLabel.String = '-Imaginary Impedance (Ω)';
+                grid(app.DatasetNyquistAxes, 'on');
+                axis(app.DatasetNyquistAxes, 'equal');
+
+                % Update Bode plot based on dropdown selection
+                app.updateBodePlot();
+
+                % Update status
+                app.DatasetStatusLabel.Text = sprintf('Plotted dataset: %d points (%.1f-%.1f Hz)', ...
+                    length(frequency), min(frequency), max(frequency));
+
+                EISAppUtils.showSuccessAlert(app.UIFigure, ...
+                    'Dataset plotted successfully!', ...
+                    'Plot Complete');
+
+            catch ME
+                EISAppUtils.showErrorAlert(app.UIFigure, ...
+                    sprintf('Failed to plot dataset: %s', ME.message), ...
+                    'Plot Error');
+            end
+        end
+
+        function BodePlotTypeChanged(app, ~)
+            % Handle Bode plot type change - replot if data is available
+            if ~isempty(app.CurrentDataset) && app.PlotDatasetButton.Enable == "on"
+                app.updateBodePlot();
+            end
+        end
+
+        function updateBodePlot(app)
+            % Update the Bode plot based on current selection
+            if isempty(app.CurrentDataset) || ~isfield(app.CurrentDataset, 'frequency') || ~isfield(app.CurrentDataset, 'impedance')
+                return;
+            end
+
+            try
+                frequency = app.CurrentDataset.frequency;
+                impedance = app.CurrentDataset.impedance;
+
+                % Clear previous plot
+                cla(app.DatasetBodeAxes);
+
+                if strcmp(app.BodePlotTypeDropDown.Value, 'Magnitude')
+                    % Bode magnitude plot
+                    magnitude = abs(impedance);
+                    semilogx(app.DatasetBodeAxes, frequency, magnitude, 'ro-', ...
+                        'LineWidth', 1.5, 'MarkerSize', 4, 'MarkerFaceColor', 'r');
+                    app.DatasetBodeAxes.Title.String = 'Bode Magnitude';
+                    app.DatasetBodeAxes.YLabel.String = '|Z| (Ω)';
+                    app.DatasetBodeAxes.YScale = 'log';
+                else
+                    % Bode phase plot
+                    phase = angle(impedance) * 180 / pi; % Convert to degrees
+                    semilogx(app.DatasetBodeAxes, frequency, phase, 'go-', ...
+                        'LineWidth', 1.5, 'MarkerSize', 4, 'MarkerFaceColor', 'g');
+                    app.DatasetBodeAxes.Title.String = 'Bode Phase';
+                    app.DatasetBodeAxes.YLabel.String = 'Phase (°)';
+                    app.DatasetBodeAxes.YScale = 'linear';
+                end
+
+                app.DatasetBodeAxes.XLabel.String = 'Frequency (Hz)';
+                grid(app.DatasetBodeAxes, 'on');
+
+            catch ME
+                EISAppUtils.showErrorAlert(app.UIFigure, ...
+                    sprintf('Failed to update plot: %s', ME.message), ...
+                    'Plot Error');
             end
         end
 
@@ -1035,6 +1184,7 @@ classdef EISApp < matlab.apps.AppBase
                     app.CurrentDataset = app.DatasetHistory{selectedRow};
                     app.updateDatasetUI(app.CurrentDataset);
                     app.SaveDatasetButton.Enable = 'on';
+                    app.PlotDatasetButton.Enable = 'on';
                 end
             end
         end
@@ -1701,8 +1851,8 @@ classdef EISApp < matlab.apps.AppBase
             end
             
             % Look for impedance data (real and imaginary parts)
-            realFields = fieldNames(contains(lower(fieldNames), {'real', 'zr', 'zreal'}));
-            imagFields = fieldNames(contains(lower(fieldNames), {'imag', 'zi', 'zimag'}));
+            realFields = fieldNames(contains(lower(fieldNames), {'real', 'zr', 'zreal', 'impedance_real'}));
+            imagFields = fieldNames(contains(lower(fieldNames), {'imag', 'zi', 'zimag', 'impedance_imag'}));
             
             if ~isempty(realFields) && ~isempty(imagFields)
                 realPart = loadedData.(realFields{1});
