@@ -60,6 +60,7 @@ classdef EISApp < matlab.apps.AppBase
         SampleNotesTextArea      matlab.ui.control.TextArea
         DatasetStatusLabel       matlab.ui.control.Label
         PlotDatasetButton        matlab.ui.control.Button
+        ClearPlotsButton         matlab.ui.control.Button
         BodePlotTypeDropDown     matlab.ui.control.DropDown
         DatasetNyquistAxes       matlab.ui.control.UIAxes
         DatasetBodeAxes          matlab.ui.control.UIAxes
@@ -82,12 +83,12 @@ classdef EISApp < matlab.apps.AppBase
         
         % Fitting data and results
         FittingResults          struct
-        CurrentModel            char = 'Randles'
+        CurrentModel            char = 'Basic RC Circuit'
         FittedParameters        double
         FitQuality              struct
       
-        ZfitCircuitStrings    cell = {'s(R1,p(R1,E2))', 's(R1,p(s(R1,G2),E2))', 's(R1,p(s(R1,H2),E2))'}
-        ZfitCircuitNames      cell = {'Randles Circuit', 'Randles + Warburg (Short)', 'Randles + Warburg (Open)'}
+        ZfitCircuitStrings    cell = {'s(R1,p(R1,C1))', 's(R1,p(R1,E2))', 's(R1,p(s(R1,G2),E2))', 's(R1,p(s(R1,H2),E2))'}
+        ZfitCircuitNames      cell = {'Basic RC Circuit', 'Randles Circuit', 'Randles + Warburg (Short)', 'Randles + Warburg (Open)'}
         
         % Report Tab components
         ReportTab                matlab.ui.container.Tab
@@ -509,6 +510,9 @@ classdef EISApp < matlab.apps.AppBase
             selectedIndex = find(strcmp(app.ModelDropDown.Value, app.ZfitCircuitNames));
 
             % Parameters for simulation
+            R1_s = 100;     % Series resistance (Ohms)
+            R1_p = 1000;    % Parallel resistance (Ohms)
+            C1 = 1e-6;      % Capacitance (F)
             Rs = 0.1;       % Solution resistance (Ohms)
             Rct = 0.5;      % Charge transfer resistance (Ohms)
             Q = 1e-3;       % CPE magnitude parameter (F⋅s^(n-1))
@@ -519,17 +523,26 @@ classdef EISApp < matlab.apps.AppBase
             % Angular frequency
             omega = 2 * pi * frequency;
 
+            % Capacitor impedance: Z_C = 1/(jωC)
+            Zc = 1 ./ (1i * omega * C1);
+
             % CPE impedance: Z_CPE = 1/(Q*(jω)^n)
             Zcpe = 1 ./ (Q * (1i * omega).^n);
 
             switch selectedIndex
-                case 1 % Standard Randles Circuit: s(R1,p(R1,E2))
+                case 1 % Basic RC Circuit: s(R1,p(R1,C1))
+                    % Parallel combination of R1_p and C1
+                    Zparallel = (R1_p .* Zc) ./ (R1_p + Zc);
+                    % Total impedance: R1_s + (R1_p || C1)
+                    impedance = R1_s + Zparallel;
+
+                case 2 % Standard Randles Circuit: s(R1,p(R1,E2))
                     % Parallel combination of Rct and CPE
                     Zparallel = (Rct .* Zcpe) ./ (Rct + Zcpe);
                     % Total impedance: Rs + (Rct || CPE)
                     impedance = Rs + Zparallel;
 
-                case 2 % Randles + Warburg (Short): s(R1,p(s(R1,G2),E2))
+                case 3 % Randles + Warburg (Short): s(R1,p(s(R1,G2),E2))
                     % Warburg impedance with short circuit boundary
                     Zw = (1 ./ (sigma * sqrt(1i * omega))) .* tanh(B * sqrt(1i * omega));
                     % Series combination of Rct and Warburg
@@ -539,7 +552,7 @@ classdef EISApp < matlab.apps.AppBase
                     % Total impedance: Rs + ((Rct + Zw) || CPE)
                     impedance = Rs + Zparallel;
 
-                case 3 % Randles + Warburg (Open): s(R1,p(s(R1,H2),E2))
+                case 4 % Randles + Warburg (Open): s(R1,p(s(R1,H2),E2))
                     % Warburg impedance with open circuit boundary
                     Zw = (1 ./ (sigma * sqrt(1i * omega))) ./ tanh(B * sqrt(1i * omega));
                     % Series combination of Rct and Warburg
@@ -710,6 +723,15 @@ classdef EISApp < matlab.apps.AppBase
             app.BodePlotTypeDropDown.Items = {'Magnitude', 'Phase'};
             app.BodePlotTypeDropDown.Value = 'Magnitude';
             app.BodePlotTypeDropDown.ValueChangedFcn = createCallbackFcn(app, @BodePlotTypeChanged, true);
+
+            % Clear plots button
+            app.ClearPlotsButton = uibutton(filePanel, 'push');
+            app.ClearPlotsButton.Position = [800 25 80 30];
+            app.ClearPlotsButton.Text = 'Clear Plots';
+            app.ClearPlotsButton.FontWeight = 'bold';
+            app.ClearPlotsButton.BackgroundColor = [0.9 0.4 0.1];
+            app.ClearPlotsButton.FontColor = [1 1 1];
+            app.ClearPlotsButton.ButtonPushedFcn = createCallbackFcn(app, @ClearDatasetPlots, true);
             
             % Dataset Table Panel
             tablePanel = uipanel(app.DatasetTab);
@@ -1066,6 +1088,36 @@ classdef EISApp < matlab.apps.AppBase
             end
         end
 
+        function ClearDatasetPlots(app, ~)
+            % Clear all plots in the dataset tab
+            try
+                % Clear Nyquist plot
+                cla(app.DatasetNyquistAxes);
+                app.DatasetNyquistAxes.Title.String = 'Nyquist Plot';
+                app.DatasetNyquistAxes.XLabel.String = 'Real Impedance (Ω)';
+                app.DatasetNyquistAxes.YLabel.String = 'Imaginary Impedance (Ω)';
+
+                % Clear Bode plot
+                cla(app.DatasetBodeAxes);
+                app.DatasetBodeAxes.Title.String = 'Bode Magnitude';
+                app.DatasetBodeAxes.XLabel.String = 'Frequency (Hz)';
+                app.DatasetBodeAxes.YLabel.String = '|Z| (Ω)';
+
+                % Update status to show plots were cleared
+                if ~isempty(app.CurrentDataset) && isfield(app.CurrentDataset, 'metadata') && isfield(app.CurrentDataset.metadata, 'filename')
+                    filename = app.CurrentDataset.metadata.filename;
+                    app.DatasetStatusLabel.Text = sprintf('Dataset loaded: %s (plots cleared)', filename);
+                else
+                    app.DatasetStatusLabel.Text = 'Plots cleared. Use "Plot Data" button to refresh visualization.';
+                end
+
+            catch ME
+                EISAppUtils.showErrorAlert(app.UIFigure, ...
+                    sprintf('Failed to clear plots: %s', ME.message), ...
+                    'Clear Error');
+            end
+        end
+
         function dataset = validateDatasetStructure(app, data, filename)
             % Ensure dataset has required fields
             dataset = struct();
@@ -1150,6 +1202,20 @@ classdef EISApp < matlab.apps.AppBase
             % Update UI with dataset information
             app.SampleNameEditField.Value = dataset.metadata.sampleName;
             app.SampleNotesTextArea.Value = dataset.metadata.notes;
+
+            % Update status bar with dataset information
+            if isfield(dataset, 'frequency') && isfield(dataset, 'impedance')
+                if isfield(dataset.metadata, 'filename') && ~isempty(dataset.metadata.filename)
+                    filename = dataset.metadata.filename;
+                    app.DatasetStatusLabel.Text = sprintf('Dataset loaded: %s (%d points, %.1f-%.1f Hz)', ...
+                        filename, length(dataset.frequency), min(dataset.frequency), max(dataset.frequency));
+                else
+                    app.DatasetStatusLabel.Text = sprintf('Dataset selected: %d points (%.1f-%.1f Hz)', ...
+                        length(dataset.frequency), min(dataset.frequency), max(dataset.frequency));
+                end
+            else
+                app.DatasetStatusLabel.Text = 'Invalid dataset structure - missing frequency or impedance data';
+            end
         end
 
         function addQuickTag(app, tag)
@@ -1257,8 +1323,8 @@ classdef EISApp < matlab.apps.AppBase
             
             app.ModelDropDown = uidropdown(modelPanel);
             app.ModelDropDown.Position = [130 15 150 22];
-            app.ModelDropDown.Items = {'Randles Circuit', 'Randles + Warburg (Short)', 'Randles + Warburg (Open)'};
-            app.ModelDropDown.Value = 'Randles Circuit';
+            app.ModelDropDown.Items = {'Basic RC Circuit', 'Randles Circuit', 'Randles + Warburg (Short)', 'Randles + Warburg (Open)'};
+            app.ModelDropDown.Value = 'Basic RC Circuit';
             app.ModelDropDown.ValueChangedFcn = createCallbackFcn(app, @ModelChanged, true);
             
             % Initial guess and fit button
@@ -1382,11 +1448,13 @@ classdef EISApp < matlab.apps.AppBase
             end
 
             switch selectedIndex
-                case 1 % Randles Circuit: s(Rs,p(Rct,Cdl))
+                case 1 % Basic RC Circuit: s(R1,p(R1,C1))
+                    app.drawBasicRCCircuit();
+                case 2 % Randles Circuit: s(Rs,p(Rct,Cdl))
                     app.drawRandlesCircuit();
-                case 2 % Randles + Warburg (Short): s(Rs,p(s(Rct,Gw),Cdl))
+                case 3 % Randles + Warburg (Short): s(Rs,p(s(Rct,Gw),Cdl))
                     app.drawRandlesWarburgCircuit('G');
-                case 3 % Randles + Warburg (Open): s(Rs,p(s(Rct,Hw),Cdl))
+                case 4 % Randles + Warburg (Open): s(Rs,p(s(Rct,Hw),Cdl))
                     app.drawRandlesWarburgCircuit('H');
             end
 
@@ -1398,6 +1466,37 @@ classdef EISApp < matlab.apps.AppBase
             app.CircuitAxes.Box = 'off';
             axis(app.CircuitAxes, 'equal');
             hold(app.CircuitAxes, 'off');
+        end
+
+        function drawBasicRCCircuit(app)
+            % Draw basic RC circuit: R1 in series with (R1 || C1)
+            % Main line
+            plot(app.CircuitAxes, [0.5 1.5], [1 1], 'k-', 'LineWidth', 2); % Left terminal
+            plot(app.CircuitAxes, [8.5 9.5], [1 1], 'k-', 'LineWidth', 2); % Right terminal
+
+            % R1 (series resistor)
+            plot(app.CircuitAxes, [1.5 3], [1 1], 'k-', 'LineWidth', 2);
+            app.drawResistor(app.CircuitAxes, 2.25, 1, 'R1');
+
+            % Connection to parallel branch
+            plot(app.CircuitAxes, [3 4], [1 1], 'k-', 'LineWidth', 2);
+            plot(app.CircuitAxes, [7 8.5], [1 1], 'k-', 'LineWidth', 2);
+
+            % Parallel branch - vertical connections
+            plot(app.CircuitAxes, [4 4], [0.5 1.5], 'k-', 'LineWidth', 2);
+            plot(app.CircuitAxes, [7 7], [0.5 1.5], 'k-', 'LineWidth', 2);
+
+            % R1 (top branch - parallel resistor)
+            plot(app.CircuitAxes, [4 7], [1.5 1.5], 'k-', 'LineWidth', 2);
+            app.drawResistor(app.CircuitAxes, 5.5, 1.5, 'R1');
+
+            % C1 (bottom branch - capacitor)
+            plot(app.CircuitAxes, [4 7], [0.5 0.5], 'k-', 'LineWidth', 2);
+            app.drawCapacitor(app.CircuitAxes, 5.5, 0.5, 'C1');
+
+            % Terminals
+            plot(app.CircuitAxes, 0.5, 1, 'ko', 'MarkerSize', 8, 'MarkerFaceColor', 'k');
+            plot(app.CircuitAxes, 9.5, 1, 'ko', 'MarkerSize', 8, 'MarkerFaceColor', 'k');
         end
 
         function drawRandlesCircuit(app)
@@ -1531,14 +1630,20 @@ classdef EISApp < matlab.apps.AppBase
             selectedIndex = find(strcmp(app.ModelDropDown.Value, app.ZfitCircuitNames));
             
             switch selectedIndex
-                case 1 % Randles Circuit: s(R1,p(R1,E2)) - 4 parameters
+                case 1 % Basic RC Circuit: s(R1,p(R1,C1)) - 3 parameters
+                    paramData = {
+                        'R1_s', 'R1 Series', 100, 'Ω';
+                        'R1_p', 'R1 Parallel', 1000, 'Ω';
+                        'C1', 'Capacitor', 1e-6, 'F'
+                    };
+                case 2 % Randles Circuit: s(R1,p(R1,E2)) - 4 parameters
                     paramData = {
                         'Rs', 'Rs', 100, 'Ω';
                         'Rct', 'Rct', 1000, 'Ω';
                         'Q', 'CPE_Q', 1e-6, 'F⋅s^(n-1)';
                         'n', 'CPE_n', 0.9, '-'
                     };
-                case 2 % Randles + Warburg (Short): s(R1,p(s(R1,G2),E2)) - 6 parameters
+                case 3 % Randles + Warburg (Short): s(R1,p(s(R1,G2),E2)) - 6 parameters
                     paramData = {
                         'Rs', 'Rs', 100, 'Ω';
                         'Rct', 'Rct', 1000, 'Ω';
@@ -1547,7 +1652,7 @@ classdef EISApp < matlab.apps.AppBase
                         'Q', 'CPE_Q', 1e-6, 'F⋅s^(n-1)';
                         'n', 'CPE_n', 0.9, '-'
                     };
-                case 3 % Randles + Warburg (Open): s(R1,p(s(R1,H2),E2)) - 6 parameters
+                case 4 % Randles + Warburg (Open): s(R1,p(s(R1,H2),E2)) - 6 parameters
                     paramData = {
                         'Rs', 'Rs', 100, 'Ω';
                         'Rct', 'Rct', 1000, 'Ω';
