@@ -1650,30 +1650,43 @@ classdef EISApp < matlab.apps.AppBase
 
         function updateParameterTable(app)
             % Update parameter table based on selected model using Zfit notation
+            % Uses smart initial guesses from data if available
             selectedIndex = find(strcmp(app.ModelDropDown.Value, app.ZfitCircuitNames));
 
             if isempty(selectedIndex)
                 selectedIndex = 1; % Default to first model
             end
 
+            % Try to get smart estimates from current data
+            if ~isempty(app.CurrentDataset) && isfield(app.CurrentDataset, 'impedance')
+                Z = app.CurrentDataset.impedance;
+                Z_real = real(Z);
+                Rs_est = min(Z_real);  % High-frequency limit
+                R_est = max(Z_real) - min(Z_real);  % Polarization resistance
+            else
+                % Default values if no data
+                Rs_est = 100;
+                R_est = 1000;
+            end
+
             switch selectedIndex
                 case 1 % Basic RC Circuit: s(R1,p(R1,C1)) - 3 parameters
                     paramData = {
-                        'R1_s', 'R1 Series', 100, 'Ω';
-                        'R1_p', 'R1 Parallel', 1000, 'Ω';
+                        'R1_s', 'R1 Series', Rs_est, 'Ω';
+                        'R1_p', 'R1 Parallel', R_est, 'Ω';
                         'C1', 'Capacitor', 1e-6, 'F'
                     };
                 case 2 % Randles Circuit: s(R1,p(R1,E2)) - 4 parameters
                     paramData = {
-                        'Rs', 'Rs', 100, 'Ω';
-                        'R', 'R', 1000, 'Ω';
+                        'Rs', 'Rs', Rs_est, 'Ω';
+                        'R', 'R', R_est, 'Ω';
                         'Q', 'CPE_Q', 1e-9, 'F⋅s^(n-1)';
                         'n', 'CPE_n', 0.85, '-'
                     };
                 case 3 % Randles + Warburg (Short): s(R1,p(s(R1,W2),E2)) - 6 parameters
                     paramData = {
-                        'Rs', 'Rs', 100, 'Ω';
-                        'Rct', 'Rct', 1000, 'Ω';
+                        'Rs', 'Rs', Rs_est, 'Ω';
+                        'Rct', 'Rct', R_est/2, 'Ω';
                         'Aw', 'Warburg_Aw', 100, 'Ω⋅s^0.5';
                         'B', 'Warburg_B', 0.1, 's^0.5';
                         'Q', 'CPE_Q', 1e-9, 'F⋅s^(n-1)';
@@ -1681,15 +1694,15 @@ classdef EISApp < matlab.apps.AppBase
                     };
                 case 4 % Randles + Warburg (Open): s(R1,p(s(R1,O2),E2)) - 6 parameters
                     paramData = {
-                        'Rs', 'Rs', 100, 'Ω';
-                        'Rct', 'Rct', 1000, 'Ω';
+                        'Rs', 'Rs', Rs_est, 'Ω';
+                        'Rct', 'Rct', R_est/2, 'Ω';
                         'Aw', 'Warburg_Aw', 100, 'Ω⋅s^0.5';
                         'B', 'Warburg_B', 0.1, 's^0.5';
                         'Q', 'CPE_Q', 1e-9, 'F⋅s^(n-1)';
                         'n', 'CPE_n', 0.85, '-'
                     };
             end
-            
+
             % Set the table data
             app.InitialGuessTable.Data = paramData;
         end
@@ -1773,16 +1786,27 @@ classdef EISApp < matlab.apps.AppBase
                 % Set up Zfit parameters
                 plotString = 'z'; % Let Zfit handle impedance plotting
                 indexes = []; % Use all data points
-                fitString = ''; % Non-proportional weighting
+                fitString = 'fitNP'; % Non-proportional weighting
 
-                % Set parameter bounds - ensure ROW vectors (matching test scripts)
-                LB = initialParams * 0.01; % Lower bounds: 1% of initial
-                LB = LB(:)';  % Force row vector
-                UB = initialParams * 100;  % Upper bounds: 100x initial
-                UB = UB(:)';  % Force row vector
-                
-                % Set optimization options
-                options = optimset('Display', 'iter', 'MaxFunEvals', 1000, 'MaxIter', 500);
+                % Set model-specific parameter bounds - ensure ROW vectors
+                switch selectedIndex
+                    case 1 % RC Circuit: Rs, R, C
+                        LB = [0, 0, 1e-12];
+                        UB = [inf, inf, 1];
+                    case 2 % Randles/CPE: Rs, R, Q, n
+                        LB = [0, 0, 1e-12, 0.5];
+                        UB = [inf, inf, 1, 1.0];
+                    case {3, 4} % Warburg: Rs, Rct, Aw, B, Q, n
+                        LB = [0, 0, 0, 0, 1e-12, 0.5];
+                        UB = [inf, inf, inf, inf, 1, 1.0];
+                end
+
+                % Set optimization options - more aggressive for better results
+                options = optimset('Display', 'iter', ...
+                                   'MaxFunEvals', 5000, ...
+                                   'MaxIter', 1000, ...
+                                   'TolFun', 1e-8, ...
+                                   'TolX', 1e-8);
 
                 % Capture command window output
                 diary('zfit_output.txt');
