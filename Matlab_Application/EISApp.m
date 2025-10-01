@@ -75,8 +75,7 @@ classdef EISApp < matlab.apps.AppBase
         FitButton               matlab.ui.control.Button
         InitialGuessTable       matlab.ui.control.Table
         FittingResultsTable     matlab.ui.control.Table
-        FittingAxes             matlab.ui.control.UIAxes
-        ResidualsAxes           matlab.ui.control.UIAxes
+        ZfitOutputTextArea      matlab.ui.control.TextArea
         CircuitAxes             matlab.ui.control.UIAxes
         FittingStatusLabel      matlab.ui.control.Label
         ExportFitButton         matlab.ui.control.Button
@@ -87,8 +86,8 @@ classdef EISApp < matlab.apps.AppBase
         FittedParameters        double
         FitQuality              struct
       
-        ZfitCircuitStrings    cell = {'s(R1,p(R1,C1))', 's(R1,p(R1,E2))', 's(R1,p(s(R1,G2),E2))', 's(R1,p(s(R1,H2),E2))'}
-        ZfitCircuitNames      cell = {'Basic RC Circuit', 'Randles Circuit', 'Randles + Warburg (Short)', 'Randles + Warburg (Open)'}
+        ZfitCircuitStrings    cell = {'s(R1,p(R1,C1))', 's(R1,p(R1,E2))', 's(R1,p(s(R1,W2),E2))', 's(R1,p(s(R1,O2),E2))'}
+        ZfitCircuitNames      cell = {'Basic RC Circuit', 'Randles Circuit (CPE)', 'Randles + Warburg Short', 'Randles + Warburg Open'}
         
         % Report Tab components
         ReportTab                matlab.ui.container.Tab
@@ -97,7 +96,6 @@ classdef EISApp < matlab.apps.AppBase
         ExportReportPDFButton   matlab.ui.control.Button
         ExportReportExcelButton matlab.ui.control.Button
         ExportLivePlotButton    matlab.ui.control.Button 
-        ExportFittingPlotButton matlab.ui.control.Button
         ReportStatusLabel       matlab.ui.control.Label
         CheckDataButton         matlab.ui.control.Button
     
@@ -112,12 +110,51 @@ classdef EISApp < matlab.apps.AppBase
             % Initialize app
             app.StatusLabel.Text = "Ready";
             app.StatusLamp.Color = [0.8 0.8 0.8]; % Gray for ready state
-            
+
+            % Create Warburg element functions for Zfit if they don't exist
+            app.createWarburgElements();
+
             % Display welcome message
             uialert(app.UIFigure, ...
                 sprintf('Welcome to %s v%s\nSelect a tab to begin.', ...
                 app.AppTitle, app.Version), ...
                 'Welcome', 'Icon', 'info');
+        end
+
+        function createWarburgElements(app)
+            % Create W.m (Warburg Short) and O.m (Warburg Open) for Zfit
+
+            % Warburg Short (W)
+            if ~exist('W.m', 'file')
+                fid = fopen('W.m', 'w');
+                fprintf(fid, 'function z = W(p, f)\n');
+                fprintf(fid, '%% Warburg Short (finite-length diffusion with reflective boundary)\n');
+                fprintf(fid, '%% Z_Ws = (Aw/sqrt(w)) * tanh(B*sqrt(jw)) / sqrt(jw)\n');
+                fprintf(fid, '%% p(1) = Aw: Warburg coefficient\n');
+                fprintf(fid, '%% p(2) = B: Diffusion time constant related parameter\n');
+                fprintf(fid, 'omega = 2*pi*f;\n');
+                fprintf(fid, 'Aw = p(1);\n');
+                fprintf(fid, 'B = p(2);\n');
+                fprintf(fid, 'z = (Aw ./ sqrt(omega)) .* tanh(B .* sqrt(1i*omega)) ./ sqrt(1i*omega);\n');
+                fprintf(fid, 'end\n');
+                fclose(fid);
+            end
+
+            % Warburg Open (O)
+            if ~exist('O.m', 'file')
+                fid = fopen('O.m', 'w');
+                fprintf(fid, 'function z = O(p, f)\n');
+                fprintf(fid, '%% Warburg Open (finite-length diffusion with transmissive boundary)\n');
+                fprintf(fid, '%% Z_Wo = (Aw/sqrt(w)) * coth(B*sqrt(jw)) / sqrt(jw)\n');
+                fprintf(fid, '%% p(1) = Aw: Warburg coefficient\n');
+                fprintf(fid, '%% p(2) = B: Diffusion time constant related parameter\n');
+                fprintf(fid, 'omega = 2*pi*f;\n');
+                fprintf(fid, 'Aw = p(1);\n');
+                fprintf(fid, 'B = p(2);\n');
+                fprintf(fid, 'z = (Aw ./ sqrt(omega)) .* coth(B .* sqrt(1i*omega)) ./ sqrt(1i*omega);\n');
+                fprintf(fid, 'end\n');
+                fclose(fid);
+            end
         end
 
         % Tab selection callback
@@ -1310,46 +1347,46 @@ classdef EISApp < matlab.apps.AppBase
             titleLabel.FontSize = 18;
             titleLabel.FontWeight = 'bold';
             
-            % Model Selection Panel
+            % Model Selection Panel (left side)
             modelPanel = uipanel(app.FittingTab);
-            modelPanel.Position = [30 520 530 50];
+            modelPanel.Position = [30 520 440 85];
             modelPanel.Title = 'Circuit Model Selection';
             modelPanel.FontWeight = 'bold';
-            
+
             modelLabel = uilabel(modelPanel);
-            modelLabel.Position = [20 15 100 22];
+            modelLabel.Position = [20 45 100 22];
             modelLabel.Text = 'Select Model:';
             modelLabel.FontWeight = 'bold';
-            
+
             app.ModelDropDown = uidropdown(modelPanel);
-            app.ModelDropDown.Position = [130 15 150 22];
-            app.ModelDropDown.Items = {'Basic RC Circuit', 'Randles Circuit', 'Randles + Warburg (Short)', 'Randles + Warburg (Open)'};
-            app.ModelDropDown.Value = 'Basic RC Circuit';
+            app.ModelDropDown.Position = [130 45 290 22];
+            app.ModelDropDown.Items = app.ZfitCircuitNames;
+            app.ModelDropDown.Value = app.ZfitCircuitNames{1};
             app.ModelDropDown.ValueChangedFcn = createCallbackFcn(app, @ModelChanged, true);
-            
-            % Initial guess and fit button
+
+            % Fit and export buttons
             app.FitButton = uibutton(modelPanel, 'push');
-            app.FitButton.Position = [300 10 120 30];
+            app.FitButton.Position = [20 10 200 30];
             app.FitButton.Text = 'Fit Model to Data';
             app.FitButton.FontWeight = 'bold';
             app.FitButton.BackgroundColor = [0.2 0.7 0.2];
             app.FitButton.FontColor = [1 1 1];
             app.FitButton.ButtonPushedFcn = createCallbackFcn(app, @FitModel, true);
-            
+
             app.ExportFitButton = uibutton(modelPanel, 'push');
-            app.ExportFitButton.Position = [440 10 120 30];
+            app.ExportFitButton.Position = [230 10 190 30];
             app.ExportFitButton.Text = 'Export Results';
             app.ExportFitButton.Enable = 'off';
             app.ExportFitButton.ButtonPushedFcn = createCallbackFcn(app, @ExportFittingResults, true);
 
-            % Circuit Diagram Panel
+            % Circuit Diagram Panel (right side, bigger)
             circuitPanel = uipanel(app.FittingTab);
-            circuitPanel.Position = [580 520 350 50];
+            circuitPanel.Position = [480 520 450 85];
             circuitPanel.Title = 'Circuit Diagram';
             circuitPanel.FontWeight = 'bold';
 
             app.CircuitAxes = uiaxes(circuitPanel);
-            app.CircuitAxes.Position = [10 5 330 35];
+            app.CircuitAxes.Position = [10 5 430 70];
             app.CircuitAxes.XTick = [];
             app.CircuitAxes.YTick = [];
             app.CircuitAxes.Box = 'off';
@@ -1372,40 +1409,32 @@ classdef EISApp < matlab.apps.AppBase
             app.InitialGuessTable.ColumnWidth = {80, 60, 100, 60};
             app.InitialGuessTable.ColumnEditable = [false false true false];
             
-            % Results Panel
+            % Zfit Output Panel (right side, from middle to right)
+            zfitOutputPanel = uipanel(app.FittingTab);
+            zfitOutputPanel.Position = [480 130 450 380];
+            zfitOutputPanel.Title = 'Zfit Output Log';
+            zfitOutputPanel.FontWeight = 'bold';
+
+            % Text area for Zfit output
+            app.ZfitOutputTextArea = uitextarea(zfitOutputPanel);
+            app.ZfitOutputTextArea.Position = [10 10 430 360];
+            app.ZfitOutputTextArea.Editable = 'off';
+            app.ZfitOutputTextArea.FontName = 'Courier New';
+            app.ZfitOutputTextArea.FontSize = 10;
+            app.ZfitOutputTextArea.Value = {'Zfit output will appear here after fitting...', '', 'Click "Fit Model to Data" to start.'};
+            app.ZfitOutputTextArea.BackgroundColor = [0.95 0.95 0.95];
+
+            % Results Panel (below left panels, full width on bottom)
             resultsPanel = uipanel(app.FittingTab);
-            resultsPanel.Position = [480 350 450 160];
+            resultsPanel.Position = [30 130 440 210];
             resultsPanel.Title = 'Fitting Results';
             resultsPanel.FontWeight = 'bold';
-            
+
             app.FittingResultsTable = uitable(resultsPanel);
-            app.FittingResultsTable.Position = [20 20 410 130];
-            app.FittingResultsTable.ColumnName = {'Parameter', 'Fitted Value', 'Std Error', 'R²'};
-            app.FittingResultsTable.ColumnWidth = {80, 100, 80, 60};
-            app.FittingResultsTable.ColumnEditable = false(1,4);
-            
-            % Plots Panel
-            plotsPanel = uipanel(app.FittingTab);
-            plotsPanel.Position = [30 130 900 210];
-            plotsPanel.Title = 'Fit Visualization';
-            plotsPanel.FontWeight = 'bold';
-            
-            % Fitting plot (Nyquist with overlay)
-            app.FittingAxes = uiaxes(plotsPanel);
-            app.FittingAxes.Position = [20 20 420 170];
-            app.FittingAxes.XLabel.String = 'Real Part (Ω)';
-            app.FittingAxes.YLabel.String = '-Imaginary Part (Ω)';
-            app.FittingAxes.Title.String = 'Measured vs Fitted Data';
-            grid(app.FittingAxes, 'on');
-            
-            % Residuals plot
-            app.ResidualsAxes = uiaxes(plotsPanel);
-            app.ResidualsAxes.Position = [460 20 420 170];
-            app.ResidualsAxes.XLabel.String = 'Frequency (Hz)';
-            app.ResidualsAxes.YLabel.String = 'Residuals (%)';
-            app.ResidualsAxes.Title.String = 'Fitting Residuals';
-            app.ResidualsAxes.XScale = 'log';
-            grid(app.ResidualsAxes, 'on');
+            app.FittingResultsTable.Position = [10 10 420 190];
+            app.FittingResultsTable.ColumnName = {'Metric', 'Value'};
+            app.FittingResultsTable.ColumnWidth = {180, 210};
+            app.FittingResultsTable.ColumnEditable = false(1,2);
             
             % Status Panel
             statusPanel = uipanel(app.FittingTab);
@@ -1417,12 +1446,6 @@ classdef EISApp < matlab.apps.AppBase
             app.FittingStatusLabel.Position = [20 20 860 22];
             app.FittingStatusLabel.Text = 'Select a circuit model and load data to begin fitting';
             app.FittingStatusLabel.FontSize = 12;
-            
-            % Export Plot Button for Fitting Tab
-            app.ExportFittingPlotButton = uibutton(app.FittingTab, 'push');
-            app.ExportFittingPlotButton.Position = [860 340 60 30];
-            app.ExportFittingPlotButton.Text = 'Export Plot';
-            app.ExportFittingPlotButton.ButtonPushedFcn = createCallbackFcn(app, @ExportFittingPlots, true);
 
             % Initialize with Randles circuit
             app.updateParameterTable();
@@ -1628,7 +1651,11 @@ classdef EISApp < matlab.apps.AppBase
         function updateParameterTable(app)
             % Update parameter table based on selected model using Zfit notation
             selectedIndex = find(strcmp(app.ModelDropDown.Value, app.ZfitCircuitNames));
-            
+
+            if isempty(selectedIndex)
+                selectedIndex = 1; % Default to first model
+            end
+
             switch selectedIndex
                 case 1 % Basic RC Circuit: s(R1,p(R1,C1)) - 3 parameters
                     paramData = {
@@ -1639,34 +1666,27 @@ classdef EISApp < matlab.apps.AppBase
                 case 2 % Randles Circuit: s(R1,p(R1,E2)) - 4 parameters
                     paramData = {
                         'Rs', 'Rs', 100, 'Ω';
-                        'Rct', 'Rct', 1000, 'Ω';
-                        'Q', 'CPE_Q', 1e-6, 'F⋅s^(n-1)';
-                        'n', 'CPE_n', 0.9, '-'
+                        'R', 'R', 1000, 'Ω';
+                        'Q', 'CPE_Q', 1e-9, 'F⋅s^(n-1)';
+                        'n', 'CPE_n', 0.85, '-'
                     };
-                case 3 % Randles + Warburg (Short): s(R1,p(s(R1,G2),E2)) - 6 parameters
+                case 3 % Randles + Warburg (Short): s(R1,p(s(R1,W2),E2)) - 6 parameters
                     paramData = {
                         'Rs', 'Rs', 100, 'Ω';
                         'Rct', 'Rct', 1000, 'Ω';
-                        'σ', 'Warburg_sigma', 0.02, 'Ω⋅s^-0.5';
-                        'B', 'Warburg_B', 0.1, 's^-0.5';
-                        'Q', 'CPE_Q', 1e-6, 'F⋅s^(n-1)';
-                        'n', 'CPE_n', 0.9, '-'
+                        'Aw', 'Warburg_Aw', 100, 'Ω⋅s^0.5';
+                        'B', 'Warburg_B', 0.1, 's^0.5';
+                        'Q', 'CPE_Q', 1e-9, 'F⋅s^(n-1)';
+                        'n', 'CPE_n', 0.85, '-'
                     };
-                case 4 % Randles + Warburg (Open): s(R1,p(s(R1,H2),E2)) - 6 parameters
+                case 4 % Randles + Warburg (Open): s(R1,p(s(R1,O2),E2)) - 6 parameters
                     paramData = {
                         'Rs', 'Rs', 100, 'Ω';
                         'Rct', 'Rct', 1000, 'Ω';
-                        'σ', 'Warburg_sigma', 0.02, 'Ω⋅s^-0.5';
-                        'B', 'Warburg_B', 0.1, 's^-0.5';
-                        'Q', 'CPE_Q', 1e-6, 'F⋅s^(n-1)';
-                        'n', 'CPE_n', 0.9, '-'
-                    };
-                otherwise % Default case
-                    paramData = {
-                        'Rs', 'Rs', 100, 'Ω';
-                        'Rct', 'Rct', 1000, 'Ω';
-                        'Q', 'CPE_Q', 1e-6, 'F⋅s^(n-1)';
-                        'n', 'CPE_n', 0.9, '-'
+                        'Aw', 'Warburg_Aw', 100, 'Ω⋅s^0.5';
+                        'B', 'Warburg_B', 0.1, 's^0.5';
+                        'Q', 'CPE_Q', 1e-9, 'F⋅s^(n-1)';
+                        'n', 'CPE_n', 0.85, '-'
                     };
             end
             
@@ -1744,65 +1764,106 @@ classdef EISApp < matlab.apps.AppBase
                 if size(tableData, 2) < 3
                     error('Parameter table does not have enough columns');
                 end
-                
+
                 initialParams = cell2mat(tableData(:,3));
-                
+
+                % Ensure initialParams is a ROW vector (matching test scripts)
+                initialParams = initialParams(:)';
+
                 % Set up Zfit parameters
-                plotString = ''; % No plotting from Zfit
+                plotString = 'z'; % Let Zfit handle impedance plotting
                 indexes = []; % Use all data points
-                fitString = 'fitP'; % Proportional weighting
-                
-                % Set parameter bounds (optional)
+                fitString = ''; % Non-proportional weighting
+
+                % Set parameter bounds - ensure ROW vectors (matching test scripts)
                 LB = initialParams * 0.01; % Lower bounds: 1% of initial
+                LB = LB(:)';  % Force row vector
                 UB = initialParams * 100;  % Upper bounds: 100x initial
+                UB = UB(:)';  % Force row vector
                 
                 % Set optimization options
-                options = optimset('Display', 'off', 'MaxFunEvals', 1000, 'MaxIter', 500);
+                options = optimset('Display', 'iter', 'MaxFunEvals', 1000, 'MaxIter', 500);
 
-                % DEBUG: Add these lines right before calling Zfit
-                fprintf('=== ZFIT DEBUG INFO ===\n');
-                fprintf('Frequency vector size: %s\n', mat2str(size(frequency)));
-                fprintf('Impedance vector size: %s\n', mat2str(size(impedance)));
-                fprintf('ZfitData matrix size: %s\n', mat2str(size(zfitData)));
-                fprintf('Initial params size: %s\n', mat2str(size(initialParams)));
-                fprintf('Circuit string: %s\n', circuitString);
-                
-                % Show first few rows of data
-                fprintf('First 3 rows of zfitData:\n');
-                disp(zfitData(1:min(3,end),:));
-                
-                % Check for any NaN or Inf values
-                fprintf('Any NaN in zfitData: %d\n', any(isnan(zfitData(:))));
-                fprintf('Any Inf in zfitData: %d\n', any(isinf(zfitData(:))));
-                
-                % Check parameter array
-                fprintf('Initial parameters:\n');
-                disp(initialParams);
-                fprintf('========================\n');
-                
+                % Capture command window output
+                diary('zfit_output.txt');
+
+                fprintf('=== ZFIT FITTING LOG ===\n');
+                fprintf('Model: %s\n', app.ModelDropDown.Value);
+                fprintf('Circuit: %s\n', circuitString);
+                fprintf('Data points: %d\n', length(frequency));
+                fprintf('Frequency range: %.2f - %.2f Hz\n', min(frequency), max(frequency));
+                fprintf('\nInitial parameters:\n');
+                for i = 1:length(initialParams)
+                    fprintf('  p%d = %.4e\n', i, initialParams(i));
+                end
+                fprintf('\nStarting optimization...\n');
+                fprintf('========================\n\n');
+
                 % Call Zfit
                 [fittedParams, fittedZ, fval, exitflag, output] = ...
                     Zfit(zfitData, plotString, circuitString, initialParams, indexes, fitString, LB, UB, options);
-                
+
+                fprintf('\n========================\n');
+                fprintf('Fitting complete!\n');
+                fprintf('Exit flag: %d\n', exitflag);
+                fprintf('Final fval: %.4e\n', fval);
+
+                diary off;
+
+                % Read and display the captured output
+                if exist('zfit_output.txt', 'file')
+                    fid = fopen('zfit_output.txt', 'r');
+                    outputText = textscan(fid, '%s', 'Delimiter', '\n', 'WhiteSpace', '');
+                    fclose(fid);
+                    app.ZfitOutputTextArea.Value = outputText{1};
+                    delete('zfit_output.txt');
+                end
+
+                fprintf('DEBUG: About to convert fittedZ to complex...\n');
+                fprintf('DEBUG: impedance size: %s\n', mat2str(size(impedance)));
+                fprintf('DEBUG: fittedZ column 1 size: %s\n', mat2str(size(fittedZ(:,1))));
+                fprintf('DEBUG: fittedZ column 2 size: %s\n', mat2str(size(fittedZ(:,2))));
+
                 % Convert fitted impedance back to complex form
-                fittedImpedance = complex(fittedZ(:,1), fittedZ(:,2));
-                
+                % Ensure columns are column vectors
+                Z_fit_real = fittedZ(:,1);
+                Z_fit_real = Z_fit_real(:);
+                Z_fit_imag = fittedZ(:,2);
+                Z_fit_imag = Z_fit_imag(:);
+
+                fprintf('DEBUG: Z_fit_real forced column size: %s\n', mat2str(size(Z_fit_real)));
+                fprintf('DEBUG: Z_fit_imag forced column size: %s\n', mat2str(size(Z_fit_imag)));
+
+                fittedImpedance = complex(Z_fit_real, Z_fit_imag);
+
+                fprintf('DEBUG: fittedImpedance size: %s\n', mat2str(size(fittedImpedance)));
+                fprintf('DEBUG: About to calculate fit quality...\n');
+
                 % Calculate fit quality
                 fitQuality = app.calculateZfitQuality(impedance, fittedImpedance, fval, exitflag);
-                
+
+                fprintf('DEBUG: Fit quality calculated successfully\n');
+                fprintf('DEBUG: R² = %.6f\n', fitQuality.rsquared);
+
                 % Store results
                 app.FittedParameters = fittedParams;
                 app.FitQuality = fitQuality;
-                
-                % Update results table and plots
+
+                fprintf('DEBUG: About to update results table...\n');
+
+                % Update results table only (Zfit handles plotting)
                 app.updateZfitResultsTable(fittedParams, fitQuality);
-                app.plotZfitResults(frequency, impedance, fittedImpedance);
-                
+
+                fprintf('DEBUG: Results table updated\n');
+                % app.plotZfitResults(frequency, impedance, fittedImpedance); % Disabled - Zfit plots directly
+
                 % Update status
                 app.FittingStatusLabel.Text = sprintf('Zfit completed. R² = %.4f, Exit: %d', ...
                     fitQuality.rsquared, exitflag);
                 app.ExportFitButton.Enable = 'on';
-                
+
+                fprintf('DEBUG: All post-processing complete!\n');
+
                 EISAppUtils.showSuccessAlert(app.UIFigure, ...
                     sprintf('Zfit completed successfully.\nR² = %.4f\nExit flag: %d', ...
                     fitQuality.rsquared, exitflag), 'Zfit Complete');
@@ -1815,72 +1876,131 @@ classdef EISApp < matlab.apps.AppBase
         end
 
         function fitQuality = calculateZfitQuality(app, measured, fitted, fval, exitflag)
-            % Calculate fit quality metrics from Zfit results
-            
-            % Calculate R-squared
-            SSres = sum(abs(measured - fitted).^2);
-            SStot = sum(abs(measured - mean(measured)).^2);
-            rsquared = 1 - SSres/SStot;
-            
+            % Calculate fit quality metrics from Zfit results (matching test scripts)
+
+            % Ensure both are column vectors
+            measured = measured(:);
+            fitted = fitted(:);
+
+            % Check dimensions match
+            if length(measured) ~= length(fitted)
+                error('Measured and fitted data must have same length: measured=%d, fitted=%d', ...
+                    length(measured), length(fitted));
+            end
+
+            % Separate real and imaginary parts - force column vectors
+            Z_real = real(measured);
+            Z_real = Z_real(:);
+            Z_imag = imag(measured);
+            Z_imag = Z_imag(:);
+            Z_fit_real = real(fitted);
+            Z_fit_real = Z_fit_real(:);
+            Z_fit_imag = imag(fitted);
+            Z_fit_imag = Z_fit_imag(:);
+
+            % Calculate residuals
+            residuals_real = Z_real - Z_fit_real;
+            residuals_imag = Z_imag - Z_fit_imag;
+            residuals_magnitude = abs(measured) - abs(fitted);
+
+            % Standard deviations
+            std_real = std(residuals_real);
+            std_imag = std(residuals_imag);
+            std_magnitude = std(residuals_magnitude);
+
+            % R-squared for real part
+            SS_res_real = sum(residuals_real.^2);
+            SS_tot_real = sum((Z_real - mean(Z_real)).^2);
+            R2_real = 1 - (SS_res_real / SS_tot_real);
+
+            % R-squared for imaginary part
+            SS_res_imag = sum(residuals_imag.^2);
+            SS_tot_imag = sum((Z_imag - mean(Z_imag)).^2);
+            R2_imag = 1 - (SS_res_imag / SS_tot_imag);
+
+            % Overall R² (combined)
+            SS_res_total = sum(residuals_real.^2 + residuals_imag.^2);
+            SS_tot_total = sum((Z_real - mean(Z_real)).^2 + (Z_imag - mean(Z_imag)).^2);
+            R2_overall = 1 - (SS_res_total / SS_tot_total);
+
             % Calculate RMSE
             rmse = sqrt(mean(abs(measured - fitted).^2));
-            
-            % Calculate normalized chi-squared (from Zfit fval)
-            chisquared_norm = fval / length(measured);
-            
+
+            % Store all metrics
             fitQuality = struct();
-            fitQuality.rsquared = rsquared;
+            fitQuality.rsquared = R2_overall;      % Overall R²
+            fitQuality.R2_real = R2_real;          % R² for real part
+            fitQuality.R2_imag = R2_imag;          % R² for imaginary part
+            fitQuality.std_real = std_real;        % Std dev of real residuals
+            fitQuality.std_imag = std_imag;        % Std dev of imag residuals
+            fitQuality.std_magnitude = std_magnitude; % Std dev of magnitude residuals
             fitQuality.rmse = rmse;
-            fitQuality.chisquared = chisquared_norm;
             fitQuality.fval = fval;
             fitQuality.exitflag = exitflag;
             fitQuality.residuals = measured - fitted;
         end
 
         function updateZfitResultsTable(app, fittedParams, fitQuality)
-            % Update results table with Zfit fitted parameters
+            % Update results table with comprehensive Zfit metrics
             paramNames = app.InitialGuessTable.Data(:,1);
-            
-            resultsData = cell(length(fittedParams), 4);
+
+            % Build results with parameters first, then quality metrics
+            resultsData = {};
+
+            % Add fitted parameters
             for i = 1:length(fittedParams)
-                resultsData{i,1} = char(paramNames{i});
-                resultsData{i,2} = sprintf('%.6g', fittedParams(i));
-                resultsData{i,3} = 'N/A'; % Standard error calculation would require more complex analysis
-                if i == 1
-                    resultsData{i,4} = sprintf('%.4f', fitQuality.rsquared);
-                else
-                    resultsData{i,4} = '';
-                end
+                resultsData{end+1,1} = sprintf('Parameter: %s', char(paramNames{i}));
+                resultsData{end,2} = sprintf('%.6g', fittedParams(i));
             end
-            
+
+            % Add separator
+            resultsData{end+1,1} = '--- Goodness of Fit ---';
+            resultsData{end,2} = '';
+
+            % Add R² values
+            resultsData{end+1,1} = 'R² (overall)';
+            resultsData{end,2} = sprintf('%.6f', fitQuality.rsquared);
+
+            resultsData{end+1,1} = 'R² (real part)';
+            resultsData{end,2} = sprintf('%.6f', fitQuality.R2_real);
+
+            resultsData{end+1,1} = 'R² (imag part)';
+            resultsData{end,2} = sprintf('%.6f', fitQuality.R2_imag);
+
+            % Add separator
+            resultsData{end+1,1} = '--- Standard Deviations ---';
+            resultsData{end,2} = '';
+
+            % Add standard deviations
+            resultsData{end+1,1} = 'σ (real part) [Ω]';
+            resultsData{end,2} = sprintf('%.4f', fitQuality.std_real);
+
+            resultsData{end+1,1} = 'σ (imag part) [Ω]';
+            resultsData{end,2} = sprintf('%.4f', fitQuality.std_imag);
+
+            resultsData{end+1,1} = 'σ (magnitude) [Ω]';
+            resultsData{end,2} = sprintf('%.4f', fitQuality.std_magnitude);
+
+            % Add separator
+            resultsData{end+1,1} = '--- Optimization Info ---';
+            resultsData{end,2} = '';
+
+            % Add optimization metrics
+            resultsData{end+1,1} = 'Exit flag';
+            resultsData{end,2} = sprintf('%d', fitQuality.exitflag);
+
+            resultsData{end+1,1} = 'Final fval';
+            resultsData{end,2} = sprintf('%.4e', fitQuality.fval);
+
+            resultsData{end+1,1} = 'RMSE';
+            resultsData{end,2} = sprintf('%.4f', fitQuality.rmse);
+
             app.FittingResultsTable.Data = resultsData;
         end
 
         function plotZfitResults(app, frequency, measured, fitted)
-            % Plot Zfit results
-            
-            % Nyquist plot with overlay
-            cla(app.FittingAxes);
-            hold(app.FittingAxes, 'on');
-            
-            plot(app.FittingAxes, real(measured), -imag(measured), 'bo', ...
-                'MarkerSize', 6, 'DisplayName', 'Measured');
-            plot(app.FittingAxes, real(fitted), -imag(fitted), 'r-', ...
-                'LineWidth', 2, 'DisplayName', 'Zfit Model');
-            
-            legend(app.FittingAxes, 'Location', 'best');
-            grid(app.FittingAxes, 'on');
-            axis(app.FittingAxes, 'equal');
-            hold(app.FittingAxes, 'off');
-            
-            % Residuals plot
-            residuals = abs(measured - fitted) ./ abs(measured) * 100;
-            
-            cla(app.ResidualsAxes);
-            semilogx(app.ResidualsAxes, frequency, residuals, 'ro-', ...
-                'LineWidth', 1.5, 'MarkerSize', 4);
-            grid(app.ResidualsAxes, 'on');
-            title(app.ResidualsAxes, 'Zfit Residuals (%)');
+            % Disabled - Zfit handles plotting directly
+            % This function is kept for compatibility but does nothing
         end
 
         function ExportFittingResults(app, ~)
@@ -1918,15 +2038,71 @@ classdef EISApp < matlab.apps.AppBase
                     case '.mat'
                         save(fullpath, 'exportData', '-v7.3');
                     case '.xlsx'
-                        % Create table for Excel export
-                        paramTable = table(exportData.parameterNames, exportData.parameters, ...
-                            'VariableNames', {'Parameter', 'Value'});
+                        % Create comprehensive table for Excel export
+                        % Parameters
+                        paramNames = exportData.parameterNames;
+                        paramValues = exportData.parameters;
+
+                        % Build metrics table
+                        metricNames = {'Model'; 'Circuit String'; ''; ...
+                                      'R² (overall)'; 'R² (real part)'; 'R² (imag part)'; ''; ...
+                                      'σ (real part) [Ω]'; 'σ (imag part) [Ω]'; 'σ (magnitude) [Ω]'; ''; ...
+                                      'Exit flag'; 'Final fval'; 'RMSE'};
+                        metricValues = {exportData.model; exportData.circuitString; ''; ...
+                                       exportData.fitQuality.rsquared; exportData.fitQuality.R2_real; ...
+                                       exportData.fitQuality.R2_imag; ''; ...
+                                       exportData.fitQuality.std_real; exportData.fitQuality.std_imag; ...
+                                       exportData.fitQuality.std_magnitude; ''; ...
+                                       exportData.fitQuality.exitflag; exportData.fitQuality.fval; ...
+                                       exportData.fitQuality.rmse};
+
+                        % Parameters table
+                        paramTable = table(paramNames, paramValues, 'VariableNames', {'Parameter', 'Value'});
                         writetable(paramTable, fullpath, 'Sheet', 'Parameters');
+
+                        % Fit quality table
+                        qualityTable = table(metricNames, metricValues, 'VariableNames', {'Metric', 'Value'});
+                        writetable(qualityTable, fullpath, 'Sheet', 'Fit_Quality');
+
                     case '.csv'
-                        % Create CSV export
-                        paramTable = table(exportData.parameterNames, exportData.parameters, ...
-                            'VariableNames', {'Parameter', 'Value'});
-                        writetable(paramTable, fullpath);
+                        % Create comprehensive CSV export
+                        fid = fopen(fullpath, 'w');
+
+                        % Header
+                        fprintf(fid, 'EIS Fitting Results Export\n');
+                        fprintf(fid, 'Date: %s\n\n', exportData.exportDate);
+
+                        % Model info
+                        fprintf(fid, 'Model,%s\n', exportData.model);
+                        fprintf(fid, 'Circuit String,%s\n\n', exportData.circuitString);
+
+                        % Parameters
+                        fprintf(fid, 'Fitted Parameters\n');
+                        fprintf(fid, 'Parameter,Value\n');
+                        for i = 1:length(exportData.parameters)
+                            fprintf(fid, '%s,%.6g\n', exportData.parameterNames{i}, exportData.parameters(i));
+                        end
+                        fprintf(fid, '\n');
+
+                        % Goodness of fit
+                        fprintf(fid, 'Goodness of Fit\n');
+                        fprintf(fid, 'R² (overall),%.6f\n', exportData.fitQuality.rsquared);
+                        fprintf(fid, 'R² (real part),%.6f\n', exportData.fitQuality.R2_real);
+                        fprintf(fid, 'R² (imag part),%.6f\n\n', exportData.fitQuality.R2_imag);
+
+                        % Standard deviations
+                        fprintf(fid, 'Standard Deviations\n');
+                        fprintf(fid, 'σ (real part) [Ω],%.4f\n', exportData.fitQuality.std_real);
+                        fprintf(fid, 'σ (imag part) [Ω],%.4f\n', exportData.fitQuality.std_imag);
+                        fprintf(fid, 'σ (magnitude) [Ω],%.4f\n\n', exportData.fitQuality.std_magnitude);
+
+                        % Optimization info
+                        fprintf(fid, 'Optimization Info\n');
+                        fprintf(fid, 'Exit flag,%d\n', exportData.fitQuality.exitflag);
+                        fprintf(fid, 'Final fval,%.4e\n', exportData.fitQuality.fval);
+                        fprintf(fid, 'RMSE,%.4f\n', exportData.fitQuality.rmse);
+
+                        fclose(fid);
                 end
                 
                 EISAppUtils.showSuccessAlert(app.UIFigure, ...
@@ -2058,15 +2234,19 @@ classdef EISApp < matlab.apps.AppBase
 
         function ExportFittingPlots(app, ~)
             try
-                [file, path] = uiputfile({'*.png';'*.pdf'}, 'Export Fitting Plot As');
+                % Export Zfit figure instead
+                zfitFig = findobj('tag', 'Zfit_fig');
+                if isempty(zfitFig)
+                    EISAppUtils.showWarningAlert(app.UIFigure, ...
+                        'No Zfit plot found. Please perform fitting first.', 'No Plot');
+                    return;
+                end
+
+                [file, path] = uiputfile({'*.png';'*.pdf'}, 'Export Zfit Plot As');
                 if isequal(file,0), return; end
-                f = figure('Visible','off');
-                t = tiledlayout(f,1,2,'TileSpacing','compact');
-                nexttile; copyobj(app.FittingAxes, gca); title('Nyquist Fit');
-                nexttile; copyobj(app.ResidualsAxes, gca); title('Residuals');
-                exportgraphics(t, fullfile(path,file));
-                close(f);
-                EISAppUtils.showSuccessAlert(app.UIFigure, 'Fitting plots exported successfully.', 'Export Complete');
+
+                exportgraphics(zfitFig, fullfile(path,file));
+                EISAppUtils.showSuccessAlert(app.UIFigure, 'Zfit plot exported successfully.', 'Export Complete');
             catch ME
                 EISAppUtils.showErrorAlert(app.UIFigure, sprintf('Failed to export plot: %s', ME.message), 'Export Error');
             end
@@ -2246,7 +2426,8 @@ classdef EISApp < matlab.apps.AppBase
             % Check if plots have been generated
             hasNyquistPlot = ~isempty(app.NyquistAxes.Children);
             hasBodePlots = ~isempty(app.BodeMagAxes.Children) && ~isempty(app.BodePhaseAxes.Children);
-            hasFittingPlot = ~isempty(app.FittingAxes.Children);
+            zfitFig = findobj('tag', 'Zfit_fig');
+            hasFittingPlot = ~isempty(zfitFig);
             
             if ~hasNyquistPlot && ~hasBodePlots
                 validationResult.warnings{end+1} = 'No EIS plots have been generated';
