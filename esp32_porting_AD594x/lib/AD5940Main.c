@@ -100,20 +100,20 @@ void AD5940ImpedanceStructInit(void)
 	/* Set switch matrix to onboard(EVAL-AD5940ELECZ) dummy sensor. */
 	/* Note the RCAL0 resistor is 10kOhm. */
 	pImpedanceCfg->DswitchSel = SWD_CE0;
-	pImpedanceCfg->PswitchSel = SWP_RE0;
-	pImpedanceCfg->NswitchSel = SWN_SE0;
-	pImpedanceCfg->TswitchSel = SWT_SE0LOAD;
+	pImpedanceCfg->PswitchSel = SWP_AIN1;
+	pImpedanceCfg->NswitchSel = SWN_AIN3;
+	pImpedanceCfg->TswitchSel = SWT_AIN2;
 	/* The dummy sensor is as low as 5kOhm. We need to make sure RTIA is small enough that HSTIA won't be saturated. */
 	pImpedanceCfg->HstiaRtiaSel = HSTIARTIA_5K;	
 	
 	/* Configure the sweep function. */
 	pImpedanceCfg->SweepCfg.SweepEn = bTRUE;
-	pImpedanceCfg->SweepCfg.SweepStart = 1.0f;	/* Start from 1kHz */
-	pImpedanceCfg->SweepCfg.SweepStop = 200e3f;		/* Stop at 100kHz */
-	pImpedanceCfg->SweepCfg.SweepPoints = 101;		/* Points is 101 */
-	pImpedanceCfg->SweepCfg.SweepLog = bTRUE;
+	pImpedanceCfg->SweepCfg.SweepStart = 10.0f;	/* Start from 10Hz */
+	pImpedanceCfg->SweepCfg.SweepStop = 200e3f;		/* Stop at 200kHz */
+	pImpedanceCfg->SweepCfg.SweepPoints = 101;		/* Points is 101 */ 
+	pImpedanceCfg->SweepCfg.SweepLog = bTRUE;		/* Logarithmic sweep */
 	/* Configure Power Mode. Use HP mode if frequency is higher than 80kHz. */
-	pImpedanceCfg->PwrMod = AFEPWR_LP;
+	pImpedanceCfg->PwrMod = AFEPWR_HP;
 	/* Configure filters if necessary */
 	pImpedanceCfg->ADCSinc3Osr = ADCSINC3OSR_2;		/* Sample rate is 800kSPS/2 = 400kSPS */
   pImpedanceCfg->DftNum = DFTNUM_16384;
@@ -122,13 +122,13 @@ void AD5940ImpedanceStructInit(void)
 
 void AD5940_Main(void)
 {
-  uint32_t temp;  
+  uint32_t temp;
   AD5940PlatformCfg();
   AD5940ImpedanceStructInit();
-  
+
   AppIMPInit(AppBuff, APPBUFF_SIZE);    /* Initialize IMP application. Provide a buffer, which is used to store sequencer commands */
   AppIMPCtrl(IMPCTRL_START, 0);          /* Control IMP measurement to start. Second parameter has no meaning with this command. */
- 
+
   while(1)
   {
     if(AD5940_GetMCUIntFlag())

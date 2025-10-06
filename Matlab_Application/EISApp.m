@@ -43,6 +43,7 @@ classdef EISApp < matlab.apps.AppBase
         FrequencyVector          double
         ImpedanceData           double
         IsRunningMeasurement    logical = false
+        MeasurementComplete     logical = false
         LivePlotStatusList      matlab.ui.control.ListBox
 
         % Data source control (removed - ESP32 handles configuration)
@@ -232,6 +233,15 @@ classdef EISApp < matlab.apps.AppBase
             clearButton.Text = 'Clear';
             clearButton.ButtonPushedFcn = createCallbackFcn(app, @ClearPlots, true);
 
+            % Save Measurement Button for Live Plot
+            saveMeasurementButton = uibutton(app.LivePlotTab, 'push');
+            saveMeasurementButton.Position = [700 480 80 30];
+            saveMeasurementButton.Text = 'Save Data';
+            saveMeasurementButton.FontWeight = 'bold';
+            saveMeasurementButton.BackgroundColor = [0.2 0.7 0.2];
+            saveMeasurementButton.FontColor = [1 1 1];
+            saveMeasurementButton.ButtonPushedFcn = createCallbackFcn(app, @SaveLiveMeasurement, true);
+
             % Export Plot Button for Live Plot
             app.ExportLivePlotButton = uibutton(app.LivePlotTab, 'push');
             app.ExportLivePlotButton.Position = [880 480 60 30];
@@ -318,11 +328,66 @@ classdef EISApp < matlab.apps.AppBase
             app.LivePlotStatusList.Value = newItems{end};
         end
 
+        function SaveLiveMeasurement(app, ~)
+            % Save live measurement data to dataset
+            try
+                if isempty(app.FrequencyVector) || isempty(app.ImpedanceData)
+                    EISAppUtils.showErrorAlert(app.UIFigure, ...
+                        'No measurement data available to save.', ...
+                        'No Data');
+                    return;
+                end
+
+                % Create dataset structure
+                dataset = struct();
+                dataset.frequency = app.FrequencyVector;
+                dataset.impedance = app.ImpedanceData;
+
+                % Add metadata with proper data types
+                dataset.metadata = struct();
+                dataset.metadata.filename = sprintf('Measurement_%s.mat', string(datetime('now', 'Format', 'yyyyMMdd_HHmmss')));
+                dataset.metadata.measurementDate = char(datetime('now', 'Format', 'yyyy-MM-dd HH:mm:ss'));
+                dataset.metadata.numPoints = double(length(app.FrequencyVector));
+                dataset.metadata.freqRange = sprintf('%.1f-%.1f Hz', min(app.FrequencyVector), max(app.FrequencyVector));
+                dataset.metadata.sampleName = char(app.SampleNameEditField.Value);
+                dataset.metadata.notes = char(app.SampleNotesTextArea.Value);
+                dataset.metadata.dataSource = 'ESP32 Live Measurement';
+
+                % Set as current dataset and add to history
+                app.CurrentDataset = dataset;
+                app.addDatasetToHistory(dataset);
+                app.SaveDatasetButton.Enable = 'on';
+                app.PlotDatasetButton.Enable = 'on';
+
+                % Update dataset tab status
+                app.DatasetStatusLabel.Text = sprintf('Live measurement saved: %s (%d points, %.1f-%.1f Hz)', ...
+                    dataset.metadata.filename, length(dataset.frequency), ...
+                    min(dataset.frequency), max(dataset.frequency));
+
+                % Show success message
+                EISAppUtils.showSuccessAlert(app.UIFigure, ...
+                    sprintf('Measurement saved successfully!\n%d points from %.1f Hz to %.1f Hz\n\nSwitch to Dataset tab to save to file.', ...
+                    length(app.FrequencyVector), min(app.FrequencyVector), max(app.FrequencyVector)), ...
+                    'Data Saved');
+
+            catch ME
+                EISAppUtils.showErrorAlert(app.UIFigure, ...
+                    sprintf('Failed to save measurement: %s', ME.message), ...
+                    'Save Error');
+            end
+        end
+
         function ClearPlots(app, ~)
             % Clear all plots - useful for clearing received data
             cla(app.NyquistAxes);
             cla(app.BodeMagAxes);
             cla(app.BodePhaseAxes);
+
+            % Reset measurement state
+            app.MeasurementComplete = false;
+            app.FrequencyVector = [];
+            app.ImpedanceData = [];
+            app.CurrentFrequencyIndex = 1;
 
             % Reset plot properties
             app.NyquistAxes.XLabel.String = 'Real Part (Ω)';
@@ -435,6 +500,7 @@ classdef EISApp < matlab.apps.AppBase
 
                 % Update UI
                 app.IsConnected = false;
+                app.MeasurementComplete = false;
                 app.ConnectButton.Enable = 'on';
                 app.DisconnectButton.Enable = 'off';
                 app.SerialPortDropDown.Enable = 'on';
@@ -470,6 +536,24 @@ classdef EISApp < matlab.apps.AppBase
                         magnitude = str2double(mag_match{1}{1});
                         phase = str2double(phase_match{1}{1});
 
+                        % Detect new sweep (frequency decreased - sweep restarted)
+                        if ~isempty(app.FrequencyVector) && frequency < app.FrequencyVector(end) && ~app.MeasurementComplete
+                            app.MeasurementComplete = true;
+                            app.addStatusMessage('*** SWEEP COMPLETE - Data collection stopped ***');
+
+                            % Show dialog prompting user to disconnect
+                            uialert(app.UIFigure, ...
+                                sprintf('Measurement sweep complete!\n\n%d points collected (%.1f Hz to %.1f Hz)\n\nClick "Save Data" to save the measurement,\nthen disconnect from ESP32.', ...
+                                length(app.FrequencyVector), min(app.FrequencyVector), max(app.FrequencyVector)), ...
+                                'Sweep Complete', 'Icon', 'success');
+                            return;
+                        end
+
+                        % Skip processing if measurement already complete
+                        if app.MeasurementComplete
+                            return;
+                        end
+
                         % Convert to complex impedance
                         real_z = magnitude * cos(deg2rad(phase));
                         imag_z = magnitude * sin(deg2rad(phase));
@@ -479,9 +563,11 @@ classdef EISApp < matlab.apps.AppBase
                         if isempty(app.FrequencyVector)
                             app.FrequencyVector = frequency;
                             app.ImpedanceData = impedance;
+                            app.CurrentFrequencyIndex = 2;
                         else
                             app.FrequencyVector(end+1) = frequency;
                             app.ImpedanceData(end+1) = impedance;
+                            app.CurrentFrequencyIndex = app.CurrentFrequencyIndex + 1;
                         end
 
                         % Update plots
@@ -502,6 +588,24 @@ classdef EISApp < matlab.apps.AppBase
                         real_z = str2double(tokens{1}{2}) / 1000; % Convert mOhm to Ohm
                         imag_z = str2double(tokens{1}{3}) / 1000; % Convert mOhm to Ohm
 
+                        % Detect new sweep (frequency decreased - sweep restarted)
+                        if ~isempty(app.FrequencyVector) && frequency < app.FrequencyVector(end) && ~app.MeasurementComplete
+                            app.MeasurementComplete = true;
+                            app.addStatusMessage('*** SWEEP COMPLETE - Data collection stopped ***');
+
+                            % Show dialog prompting user to disconnect
+                            uialert(app.UIFigure, ...
+                                sprintf('Measurement sweep complete!\n\n%d points collected (%.1f Hz to %.1f Hz)\n\nClick "Save Data" to save the measurement,\nthen disconnect from ESP32.', ...
+                                length(app.FrequencyVector), min(app.FrequencyVector), max(app.FrequencyVector)), ...
+                                'Sweep Complete', 'Icon', 'success');
+                            return;
+                        end
+
+                        % Skip processing if measurement already complete
+                        if app.MeasurementComplete
+                            return;
+                        end
+
                         % Create complex impedance
                         impedance = complex(real_z, imag_z);
                         magnitude = abs(impedance);
@@ -511,9 +615,11 @@ classdef EISApp < matlab.apps.AppBase
                         if isempty(app.FrequencyVector)
                             app.FrequencyVector = frequency;
                             app.ImpedanceData = impedance;
+                            app.CurrentFrequencyIndex = 2;
                         else
                             app.FrequencyVector(end+1) = frequency;
                             app.ImpedanceData(end+1) = impedance;
+                            app.CurrentFrequencyIndex = app.CurrentFrequencyIndex + 1;
                         end
 
                         % Update plots
