@@ -566,13 +566,13 @@ classdef EISApp < matlab.apps.AppBase
                         app.updateEISPlots();
 
                         % Update status
-                        app.addStatusMessage(sprintf('Point %d: f=%.2f Hz, |Z|=%.2f Ω, φ=%.2f°', ...
+                        app.addStatusMessage(sprintf('Point %d: f=%.2f Hz, |Z|=%.6f Ω, φ=%.2f°', ...
                             length(app.FrequencyVector), frequency, magnitude, phase));
                     end
-                % Parse AD5941 EIS data (format: "Freq: 1.000000 (real, image) = ,123.456 , 78.901 ,mOhm")
+                % Parse AD5941 EIS data (format: "Freq: 100.000000 (real, image) = -4.000000 , 0.000000 mOhm")
                 elseif contains(line, 'Freq:') && contains(line, '(real, image)') && contains(line, 'mOhm')
                     % Extract frequency and impedance components
-                    tokens = regexp(line, 'Freq:\s*([\d.]+).*=\s*,([\d.-]+)\s*,\s*([\d.-]+)\s*,mOhm', 'tokens');
+                    tokens = regexp(line, 'Freq:\s*([\d.]+).*=\s*([\d.-]+)\s*,\s*([\d.-]+)\s*mOhm', 'tokens');
 
                     if ~isempty(tokens) && length(tokens{1}) == 3
                         % Parse values
@@ -618,7 +618,7 @@ classdef EISApp < matlab.apps.AppBase
                         app.updateEISPlots();
 
                         % Update status
-                        app.addStatusMessage(sprintf('Point %d: f=%.2f Hz, |Z|=%.2f Ω, φ=%.2f°', ...
+                        app.addStatusMessage(sprintf('Point %d: f=%.2f Hz, |Z|=%.6f Ω, φ=%.2f°', ...
                             length(app.FrequencyVector), frequency, magnitude, phase));
                     end
                 % Parse AD5941 calibration data (format: "i: 1   Freq: 1.00  RcalVolt:(-86.000000,50.000000)")
