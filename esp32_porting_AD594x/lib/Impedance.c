@@ -55,7 +55,7 @@ AppIMPCfg_Type AppIMPCfg =
   .ExcitBufGain = EXCITBUFGAIN_0P25,//EXCITBUFGAIN_2,
   .HsDacGain = HSDACGAIN_0P2,//HSDACGAIN_1,
   .HsDacUpdateRate = 7,
-  .DacVoltPP = 800.0,
+  .DacVoltPP = 600.0,
   .BiasVolt = -0.0f,
 
   .SinFreq = 100000.0, /* 1000Hz */
@@ -64,7 +64,7 @@ AppIMPCfg_Type AppIMPCfg =
   .DftSrc = DFTSRC_SINC3,
   .HanWinEn = bTRUE,
 
-  .AdcPgaGain = ADCPGA_4,//ADCPGA_1,
+  .AdcPgaGain = ADCPGA_1,//ADCPGA_1,
   .ADCSinc3Osr = ADCSINC3OSR_2,
   .ADCSinc2Osr = ADCSINC2OSR_22,
 

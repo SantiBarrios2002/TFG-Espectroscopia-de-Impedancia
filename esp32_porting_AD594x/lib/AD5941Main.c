@@ -34,7 +34,7 @@ int32_t BATShowResult(uint32_t *pData, uint32_t DataCount)
   /*Process data*/
   for(int i=0;i<DataCount;i++)
   {
-    printf("Freq: %f (real, image) = ,%f , %f ,mOhm \n",freq, pImp[i].Real,pImp[i].Image);
+    printf("Freq: %f (real, image) = %f , %f mOhm \n",freq, pImp[i].Real,pImp[i].Image);
   }
   return 0;
 }
@@ -100,9 +100,9 @@ void AD5940BATStructInit(void)
 	pBATCfg->SinFreq = 200;									/* Sin wave frequency. THis value has no effect if sweep is enabled */
 	
 	pBATCfg->SweepCfg.SweepEn = bTRUE;			/* Set to bTRUE to enable sweep function */
-	pBATCfg->SweepCfg.SweepStart = 1.0f;		/* Start sweep at 1Hz  */
-	pBATCfg->SweepCfg.SweepStop = 50000.0f;	/* Finish sweep at 1000Hz */
-	pBATCfg->SweepCfg.SweepPoints = 50;			/* 100 frequencies in the sweep */
+	pBATCfg->SweepCfg.SweepStart = 100.0f;		/* Start sweep at 100Hz  */
+	pBATCfg->SweepCfg.SweepStop = 10e3f;	/* Finish sweep at 10kHz */
+	pBATCfg->SweepCfg.SweepPoints = 51;			/* 101 frequencies in the sweep */
 	pBATCfg->SweepCfg.SweepLog = bTRUE;			/* Set to bTRUE to use LOG scale. Set bFALSE to use linear scale */
 	
 }
@@ -116,18 +116,43 @@ void AD5941_Main(void)
   
   AppBATInit(AppBATBuff, APPBUFF_SIZE);    /* Initialize BAT application. Provide a buffer, which is used to store sequencer commands */
   AppBATCtrl(BATCTRL_MRCAL, 0);     /* Measur RCAL each point in sweep */
-	AppBATCtrl(BATCTRL_START, 0); 
+	printf("RCAL measurement done.\n");
+  AppBATCtrl(BATCTRL_START, 0);
+  printf("Battery measurement started.\n");
+  printf("Waiting for interrupts...\n");
+
+  uint32_t poll_count = 0;
+  const uint32_t POLL_TIMEOUT = 100000; // Poll for 100k iterations before manual trigger
+
+  /* Main loop */
   while(1)
   {
     /* Check if interrupt flag which will be set when interrupt occurred. */
     if(AD5940_GetMCUIntFlag())
     {
+				printf("Interrupt received!\n");
 				AD5940_ClrMCUIntFlag(); 				/* Clear this flag */
 				temp = APPBUFF_SIZE;
 				AppBATISR(AppBATBuff, &temp); 			/* Deal with it and provide a buffer to store data we got */
 				AD5940_Delay10us(100000);
 				BATShowResult(AppBATBuff, temp);		/* Print measurement results over UART */		
-				AD5940_SEQMmrTrig(SEQID_0);  		/* Trigger next measurement ussing MMR write*/      
+				AD5940_SEQMmrTrig(SEQID_0);  		/* Trigger next measurement ussing MMR write*/
+			poll_count = 0; // Reset timeout counter
+   }
+   else
+   {
+			poll_count++;
+			if(poll_count >= POLL_TIMEOUT)
+			{
+				temp = APPBUFF_SIZE;
+				AppBATISR(AppBATBuff, &temp); 			/* Poll FIFO directly */
+				if(temp > 0)
+				{
+					BATShowResult(AppBATBuff, temp);
+					AD5940_SEQMmrTrig(SEQID_0);  		/* Trigger next measurement */
+				}
+				poll_count = 0; // Reset counter
+			}
    }
   }
 }

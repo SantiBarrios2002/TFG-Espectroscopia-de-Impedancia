@@ -34,7 +34,7 @@ AppBATCfg_Type AppBATCfg =
   .NumOfData = -1,
 
   .PwrMod = AFEPWR_LP,
-  .ACVoltPP = 800.0,
+  .ACVoltPP = 600.0,
   .DCVolt = 1100.0f,
   .SinFreq = 50000.0, /* 50kHz */
   .RcalVal = 50.0, /* 50mOhm */
@@ -395,7 +395,10 @@ AD5940Err AppBATInit(uint32_t *pBuffer, uint32_t BufferSize)
   AD5940_FIFOCfg(&fifo_cfg);
 
   AD5940_INTCClrFlag(AFEINTSRC_ALLINT);
-  
+
+  /* Configure interrupt controller INTC0 to route FIFO threshold interrupt to GPIO */
+  AD5940_INTCCfg(AFEINTC_0, AFEINTSRC_DATAFIFOTHRESH, bTRUE);
+
   /* Start sequence generator */
   /* Initialize sequencer generator */
   if((AppBATCfg.BATInited == bFALSE)||\

@@ -131,7 +131,7 @@ void app_main(void)
     
     // Create tasks for each board functionality
     // Uncomment the task you want to run. Only one should be active at a time.
-    xTaskCreate(ad5940_impedance_task, "ad5940_task", 8192, NULL, 5, NULL);
-    // xTaskCreate(ad5941_battery_task, "ad5941_task", 8192, NULL, 5, NULL);
+    // xTaskCreate(ad5940_impedance_task, "ad5940_task", 8192, NULL, 5, NULL);
+    xTaskCreate(ad5941_battery_task, "ad5941_task", 8192, NULL, 5, NULL);
 
 }

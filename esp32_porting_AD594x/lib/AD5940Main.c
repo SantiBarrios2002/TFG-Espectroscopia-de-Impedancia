@@ -93,7 +93,7 @@ void AD5940ImpedanceStructInit(void)
   pImpedanceCfg->SeqStartAddr = 0;
   pImpedanceCfg->MaxSeqLen = 512; /* @todo add checker in function */
 
-  pImpedanceCfg->RcalVal = 10000.0;
+  pImpedanceCfg->RcalVal = 10000.0; /* 10kOhm, adjust to the */
   pImpedanceCfg->SinFreq = 60000.0;
   pImpedanceCfg->FifoThresh = 4;
 	
@@ -104,19 +104,19 @@ void AD5940ImpedanceStructInit(void)
 	pImpedanceCfg->NswitchSel = SWN_AIN3;
 	pImpedanceCfg->TswitchSel = SWT_AIN2;
 	/* The dummy sensor is as low as 5kOhm. We need to make sure RTIA is small enough that HSTIA won't be saturated. */
-	pImpedanceCfg->HstiaRtiaSel = HSTIARTIA_5K;	
+	pImpedanceCfg->HstiaRtiaSel = HSTIARTIA_1K;	
 	
 	/* Configure the sweep function. */
 	pImpedanceCfg->SweepCfg.SweepEn = bTRUE;
-	pImpedanceCfg->SweepCfg.SweepStart = 10.0f;	/* Start from 10Hz */
-	pImpedanceCfg->SweepCfg.SweepStop = 200e3f;		/* Stop at 200kHz */
-	pImpedanceCfg->SweepCfg.SweepPoints = 101;		/* Points is 101 */ 
+	pImpedanceCfg->SweepCfg.SweepStart = 100.0f;	/* Start from 100Hz */
+	pImpedanceCfg->SweepCfg.SweepStop = 100e3f;		/* Stop at 100kHz */
+	pImpedanceCfg->SweepCfg.SweepPoints = 51;		/* Points is 51 */ 
 	pImpedanceCfg->SweepCfg.SweepLog = bTRUE;		/* Logarithmic sweep */
 	/* Configure Power Mode. Use HP mode if frequency is higher than 80kHz. */
-	pImpedanceCfg->PwrMod = AFEPWR_HP;
+	pImpedanceCfg->PwrMod = AFEPWR_LP;
 	/* Configure filters if necessary */
 	pImpedanceCfg->ADCSinc3Osr = ADCSINC3OSR_2;		/* Sample rate is 800kSPS/2 = 400kSPS */
-  pImpedanceCfg->DftNum = DFTNUM_16384;
+  pImpedanceCfg->DftNum = DFTNUM_8192;
   pImpedanceCfg->DftSrc = DFTSRC_SINC3;
 }
 
