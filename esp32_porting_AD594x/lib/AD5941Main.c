@@ -91,16 +91,16 @@ void AD5940BATStructInit(void)
   pBATCfg->SeqStartAddr = 0;
   pBATCfg->MaxSeqLen = 512;
   pBATCfg->RcalVal = 50.0;  							/* Value of RCAL on EVAL-AD5941BATZ board is 50mOhm */
-  pBATCfg->ACVoltPP = 300.0f;							/* Pk-pk amplitude is 300mV */
-  pBATCfg->DCVolt = 1200.0f;							/* Offset voltage of 1.2V*/
-  pBATCfg->DftNum = DFTNUM_8192;
+  pBATCfg->ACVoltPP = 10.0f;							/* Pk-pk amplitude is 10mV */
+  pBATCfg->DCVolt = 0.0f;							/* Offset voltage of 0.0V*/
+  pBATCfg->DftNum = DFTNUM_16384;			/* 16384 points DFT */
   
   pBATCfg->FifoThresh = 2;      					/* 2 results in FIFO, real and imaginary part. */
 	
 	pBATCfg->SinFreq = 200;									/* Sin wave frequency. THis value has no effect if sweep is enabled */
 	
 	pBATCfg->SweepCfg.SweepEn = bTRUE;			/* Set to bTRUE to enable sweep function */
-	pBATCfg->SweepCfg.SweepStart = 100.0f;		/* Start sweep at 100Hz  */
+	pBATCfg->SweepCfg.SweepStart = 100.0f;		/* Start sweep at 1Hz  */
 	pBATCfg->SweepCfg.SweepStop = 10e3f;	/* Finish sweep at 10kHz */
 	pBATCfg->SweepCfg.SweepPoints = 51;			/* 101 frequencies in the sweep */
 	pBATCfg->SweepCfg.SweepLog = bTRUE;			/* Set to bTRUE to use LOG scale. Set bFALSE to use linear scale */

@@ -11,7 +11,7 @@ function convertTxtToMat()
 %   - measurement_info: struct with metadata
 
     % Base directory containing measurement files
-    base_dir = 'reference_measurement_isx3';
+    base_dir = pwd;
 
     % Find all .txt files
     txt_files = dir(fullfile(base_dir, '*.txt'));
