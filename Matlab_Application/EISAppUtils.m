@@ -37,7 +37,7 @@ classdef EISAppUtils < handle
         
         function version = getAppVersion()
             % Return current app version
-            version = "1.0.0";
+            version = "1.5.0";
         end
         
         function timestamp = getCurrentTimestamp()

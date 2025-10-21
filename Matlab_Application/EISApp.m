@@ -15,7 +15,7 @@ classdef EISApp < matlab.apps.AppBase
     end
     
     properties (Access = private)
-        Version = "1.0.0"
+        Version = "1.5.0"
         AppTitle = "EIS Analysis Tool"
     end
 
