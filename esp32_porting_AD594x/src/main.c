@@ -38,71 +38,89 @@ uint32_t MCUPlatformInit(void *pCfg)
 {
     ESP_LOGI(TAG, "MCU Platform Init");
     /* Clock Configure - handled by ESP-IDF */
-    /* UART Configure - handled by ESP-IDF */  
+    /* UART Configure - handled by ESP-IDF */
     /* GPIO Configure - handled by ESP-IDF */
     return 0;
 }
 
-// Task for AD5940 board (Impedance.c functionality)
-void ad5940_impedance_task(void *pvParameters)
+// Helper function to parse board selection from string commands
+// Useful for MQTT/Serial command integration
+board_type_t parse_board_selection(const char *command)
 {
-    ESP_LOGI(TAG, "=== Starting AD5940 Impedance Measurement ===");
-    
-    // Select AD5940 board using existing board selection system
-    board_select(BOARD_AD5940);
-    ESP_LOGI(TAG, "AD5940 board selected");
-    
-    // Initialize MCU platform
-    MCUPlatformInit(NULL);
-    
-    // Initialize AD5940 MCU resources  
-    AD5940_MCUResourceInit(NULL);
-    
-    ESP_LOGI(TAG, "AD5940 initialized, starting impedance measurements");
-    
-    // Signal system is ready for this board
-    ESP_LOGI(TAG, "AD5940_SYSTEM_READY");
+    if (command == NULL) {
+        return BOARD_AD5940;  // Default
+    }
 
-    // Call AD5940 main function (Impedance.c functionality)
-    // For adjusting the measurement parameters, please refer to the AD5940_Main function in AD5940Main.c
-    // void AD5940ImpedanceStructInit(void); is the function to modify parameters
-    AD5940_Main();
+    // Check for "AD5941" or "BOARD_AD5941" in command string
+    if (strstr(command, "AD5941") != NULL || strstr(command, "5941") != NULL) {
+        return BOARD_AD5941;
+    }
+
+    // Check for "AD5940" or "BOARD_AD5940" in command string
+    if (strstr(command, "AD5940") != NULL || strstr(command, "5940") != NULL) {
+        return BOARD_AD5940;
+    }
+
+    ESP_LOGW(TAG, "Unknown board in command '%s', defaulting to AD5940", command);
+    return BOARD_AD5940;
+}
+
+// Generic measurement task that works with any selected board
+// The board_config system allows runtime switching via board_select()
+void measurement_task(void *pvParameters)
+{
+    board_type_t board = (board_type_t)(uintptr_t)pvParameters;
+
+    // Runtime board selection - this is the key feature!
+    board_select(board);
+
+    if (board == BOARD_AD5940) {
+        ESP_LOGI(TAG, "=== Starting AD5940 Impedance Measurement ===");
+        ESP_LOGI(TAG, "AD5940 board selected via board_config system");
+
+        // Initialize MCU platform
+        MCUPlatformInit(NULL);
+
+        // Initialize using wrapper function - calls ad5940_interface.MCUResourceInit
+        AD5940_MCUResourceInit(NULL);
+
+        ESP_LOGI(TAG, "AD5940 initialized, starting impedance measurements");
+        ESP_LOGI(TAG, "AD5940_SYSTEM_READY");
+
+        // All AD5940_* function calls now route through current_board pointer
+        AD5940_Main();
+
+    } else if (board == BOARD_AD5941) {
+        ESP_LOGI(TAG, "=== Starting AD5941 Battery Impedance Measurement ===");
+        ESP_LOGI(TAG, "AD5941 board selected via board_config system");
+
+        // Initialize MCU platform
+        MCUPlatformInit(NULL);
+
+        // Initialize using wrapper function - calls ad5941_interface.MCUResourceInit
+        AD5940_MCUResourceInit(NULL);
+
+        ESP_LOGI(TAG, "AD5941 initialized, starting battery impedance measurements");
+        ESP_LOGI(TAG, "AD5941_SYSTEM_READY");
+
+        // All AD5940_* function calls now route through current_board pointer
+        AD5941_Main();
+    }
+
     fflush(stdout);
-    
-    // This should never be reached
-    ESP_LOGE(TAG, "AD5940_Main returned unexpectedly");
+    ESP_LOGE(TAG, "Measurement function returned unexpectedly");
     vTaskDelete(NULL);
 }
 
-// Task for AD5941 board (BATImpedance.c functionality)  
+// Legacy task wrappers for backwards compatibility
+void ad5940_impedance_task(void *pvParameters)
+{
+    measurement_task((void *)(uintptr_t)BOARD_AD5940);
+}
+
 void ad5941_battery_task(void *pvParameters)
 {
-    ESP_LOGI(TAG, "=== Starting AD5941 Battery Impedance Measurement ===");
-    
-    // Select AD5941 board using existing board selection system
-    board_select(BOARD_AD5941);
-    ESP_LOGI(TAG, "AD5941 board selected");
-    
-    // Initialize MCU platform
-    MCUPlatformInit(NULL);
-    
-    // Initialize AD5940 MCU resources (note: still AD5940_MCUResourceInit for AD5941)
-    AD5940_MCUResourceInit(NULL);
-    
-    ESP_LOGI(TAG, "AD5941 initialized, starting battery impedance measurements");
-    
-    // Signal system is ready for this board
-    ESP_LOGI(TAG, "AD5941_SYSTEM_READY");
-
-    // Call AD5941 main function (BATImpedance.c functionality)
-    // For adjusting the measurement parameters, please refer to the AD5941_Main function in AD5941Main.c
-    // void AD5940BATStructInit(void); is the function to modify parameters
-    AD5941_Main();
-    fflush(stdout);
-    
-    // This should never be reached
-    ESP_LOGE(TAG, "AD5941_Main returned unexpectedly");
-    vTaskDelete(NULL);
+    measurement_task((void *)(uintptr_t)BOARD_AD5941);
 }
 
 // Main ESP-IDF application entry point
@@ -110,11 +128,11 @@ void app_main(void)
 {
     ESP_LOGI(TAG, "Starting ESP32 Dual Board Application");
     ESP_LOGI(TAG, "Build Time: %s %s", __DATE__, __TIME__);
-    
+
     // Disable the task watchdog timer
     ESP_ERROR_CHECK(esp_task_wdt_deinit());
     ESP_LOGI(TAG, "Task watchdog timer disabled");
-    
+
     // Initialize NVS (required for ESP32)
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -124,14 +142,38 @@ void app_main(void)
     ESP_ERROR_CHECK(ret);
 
     // Print available functionality
-    ESP_LOGI(TAG, "=== Dual Board Functionality Compiled ===");
-    ESP_LOGI(TAG, "AD5940: Standard impedance spectroscopy ready");
-    // ESP_LOGI(TAG, "AD5941: Battery impedance measurement ready");
-    ESP_LOGI(TAG, "========================================");
-    
-    // Create tasks for each board functionality
-    // Uncomment the task you want to run. Only one should be active at a time.
-    // xTaskCreate(ad5940_impedance_task, "ad5940_task", 8192, NULL, 5, NULL);
-    xTaskCreate(ad5941_battery_task, "ad5941_task", 8192, NULL, 5, NULL);
+    ESP_LOGI(TAG, "=== Board Config System Enabled ===");
+    ESP_LOGI(TAG, "Runtime board switching via board_select()");
+    ESP_LOGI(TAG, "AD5940: Standard impedance spectroscopy");
+    ESP_LOGI(TAG, "AD5941: Battery impedance measurement");
+    ESP_LOGI(TAG, "====================================");
 
+    /*
+     * RUNTIME BOARD SWITCHING EXAMPLES:
+     *
+     * Example 1: Simple static selection
+     * board_type_t selected_board = BOARD_AD5940;  // or BOARD_AD5941
+     * xTaskCreate(measurement_task, "measure", 8192, (void*)(uintptr_t)selected_board, 5, NULL);
+     *
+     * Example 2: Dynamic selection from MQTT/Serial command
+     * char* command = "SELECT_BOARD:AD5941";
+     * board_type_t board = parse_board_command(command);
+     * board_select(board);  // Switch at runtime!
+     *
+     * Example 3: Sequential measurements on both boards
+     * // Run AD5940 first
+     * board_select(BOARD_AD5940);
+     * AD5940_MCUResourceInit(NULL);
+     * perform_measurement();
+     *
+     * // Switch to AD5941
+     * board_select(BOARD_AD5941);
+     * AD5940_MCUResourceInit(NULL);
+     * perform_measurement();
+     */
+
+    // Default: Start with AD5941 battery measurements
+    // Change BOARD_AD5941 to BOARD_AD5940 to switch boards
+    // xTaskCreate(measurement_task, "measure", 8192, (void*)(uintptr_t)BOARD_AD5941, 5, NULL);
+    xTaskCreate(ad5941_battery_task, "AD5941_BAT_Task", 8192, NULL, 5, NULL);
 }

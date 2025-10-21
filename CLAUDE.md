@@ -18,6 +18,7 @@ Note: A backend server for data management and cloud services will be developed 
 
 - Every time we create new files we update the CLAUDE.md file
 - **EISAppV2.m created**: Implemented complete path-based MATLAB interface with server integration and ESP32 status monitoring
+- **board_config system implemented**: Full runtime board switching via function pointer abstraction layer (2025-01-21)
 
 ## Build and Development Commands
 
@@ -71,11 +72,70 @@ ESP32 + AD5940/AD5941 ↔ [MQTT via Server] ↔ MATLAB Frontend App ↔ [Node-RE
 - SPI: SCLK=18, MISO=19, MOSI=23
 - Control: CS=4, INT=3, RST=15
 
-### Board Selection System
-- **Function Pointer Interface**: `board_interface_t` structure with board-specific implementations
-- **Runtime Switching**: `board_select(BOARD_AD5940)` or `board_select(BOARD_AD5941)`
-- **MATLAB Integration**: Board selection commands sent via serial/WiFi communication
-- **Hardware Isolation**: Separate pin assignments prevent SPI bus conflicts
+### Board Selection System (board_config)
+
+The board_config system provides runtime board switching without recompilation through a function pointer abstraction layer.
+
+**Architecture:**
+- **Function Pointer Interface**: `board_interface_t` structure with 9 function pointers
+- **Wrapper Functions**: Global `AD5940_*` functions that route calls through `current_board` pointer
+- **Runtime Switching**: `board_select(BOARD_AD5940)` or `board_select(BOARD_AD5941)` changes active board
+- **Hardware Isolation**: Each board has separate pin configurations to prevent SPI bus conflicts
+
+**Implementation Files:**
+- `include/board_config.h`: Interface definitions and wrapper function declarations
+- `lib/board_config.c`: Wrapper function implementations that call through current_board pointer
+- `lib/ESP32Port_AD5940.c`: Defines `ad5940_interface` structure with AD5940-specific functions
+- `lib/ESP32Port_AD5941.c`: Defines `ad5941_interface` structure with AD5941-specific functions
+
+**How It Works:**
+```c
+// 1. Board-specific interfaces are defined in ESP32Port files
+board_interface_t ad5940_interface = {
+    .CsSet = AD5940_CsSet_AD5940,
+    .MCUResourceInit = AD5940_MCUResourceInit_AD5940,
+    // ... other functions
+};
+
+// 2. Runtime selection via board_select()
+board_select(BOARD_AD5941);  // Sets current_board = &ad5941_interface
+
+// 3. Wrapper functions route calls through current_board
+void AD5940_CsSet(void) {
+    if (current_board && current_board->CsSet) {
+        current_board->CsSet();  // Calls AD5940_CsSet_AD5941
+    }
+}
+
+// 4. AD5940 driver library calls wrapper functions
+// All calls automatically route to the selected board!
+```
+
+**Usage Examples:**
+```c
+// Simple static selection
+board_select(BOARD_AD5940);
+AD5940_MCUResourceInit(NULL);
+AD5940_Main();
+
+// Dynamic selection from command string
+board_type_t board = parse_board_selection("SELECT_BOARD:AD5941");
+board_select(board);
+
+// Sequential measurements on both boards
+board_select(BOARD_AD5940);
+AD5940_MCUResourceInit(NULL);
+perform_measurement();
+
+board_select(BOARD_AD5941);
+AD5940_MCUResourceInit(NULL);
+perform_measurement();
+```
+
+**Integration with MQTT/Serial:**
+- `parse_board_selection(const char *command)`: Parses board selection from string commands
+- Compatible with MQTT topics like `esp32/cmd/select_board`
+- Supports commands: `"AD5940"`, `"AD5941"`, `"BOARD_AD5940"`, `"BOARD_AD5941"`, `"5940"`, `"5941"`
 
 ## Communication Protocols
 
@@ -341,6 +401,15 @@ typedef enum {
 - `lib/ESP32Port_AD5941.c`: ESP32 hardware abstraction for AD5941 board with precharge control
 
 #### Recent Implementation Updates:
+
+**Board Config System (2025-01-21):**
+- **Wrapper Functions**: Implemented 9 wrapper functions in `lib/board_config.c` that route all AD5940 library calls through `current_board` pointer
+- **Runtime Switching**: Full support for switching between AD5940/AD5941 boards at runtime without recompilation
+- **Command Parsing**: Added `parse_board_selection()` helper function for MQTT/Serial command integration
+- **Unified Task Architecture**: Refactored main.c to use single `measurement_task()` function that works with any board
+- **Documentation**: Complete architectural documentation added to CLAUDE.md and inline code comments
+
+**Previous Updates:**
 - **Arduino_WriteDn Function**: Implemented ESP32 version of ADI's precharge control function
   - Maps ADI digital pins D3/D4 to ESP32 GPIO 17/18
   - Enables BATImpedance.c precharge functionality for battery measurements
